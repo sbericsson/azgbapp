@@ -399,50 +399,6 @@ export function Admin() {
 
   const availableGolfers = golfers.filter((g) => !takenNames.has(g.name));
 
-  // ── Shared pairing form fields ────────────────────────────────────────────────
-
-  const PairingFormFields = () => (
-    <>
-      <input
-        className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-        placeholder="Group name (e.g. Group 1)"
-        value={gName}
-        onChange={(e) => setGName(e.target.value)}
-      />
-      <div className="flex gap-2">
-        <input
-          className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-          placeholder="4-digit PIN"
-          value={gPin}
-          onChange={(e) => setGPin(e.target.value)}
-          maxLength={4}
-          inputMode="numeric"
-        />
-        <button
-          onPointerDown={() => setGPin(randomPin())}
-          className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
-        >
-          Random PIN
-        </button>
-      </div>
-      <p className="text-gray-400 text-xs">Players (up to 4):</p>
-      {gPlayers.map((name, i) => (
-        <input
-          key={i}
-          list="golfer-roster"
-          className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-          placeholder={`Player ${i + 1}`}
-          value={name}
-          onChange={(e) => {
-            const next = [...gPlayers];
-            next[i] = e.target.value;
-            setGPlayers(next);
-          }}
-        />
-      ))}
-    </>
-  );
-
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -799,7 +755,43 @@ export function Admin() {
                     editingGroupId === g.id ? (
                       <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                         <p className="text-sm font-semibold text-gray-200">Edit Pairing</p>
-                        <PairingFormFields />
+                        <input
+                          className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                          placeholder="Group name (e.g. Group 1)"
+                          value={gName}
+                          onChange={(e) => setGName(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                            placeholder="4-digit PIN"
+                            value={gPin}
+                            onChange={(e) => setGPin(e.target.value)}
+                            maxLength={4}
+                            inputMode="numeric"
+                          />
+                          <button
+                            onPointerDown={() => setGPin(randomPin())}
+                            className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
+                          >
+                            Random PIN
+                          </button>
+                        </div>
+                        <p className="text-gray-400 text-xs">Players (up to 4):</p>
+                        {gPlayers.map((name, i) => (
+                          <input
+                            key={i}
+                            list="golfer-roster"
+                            className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                            placeholder={`Player ${i + 1}`}
+                            value={name}
+                            onChange={(e) => {
+                              const next = [...gPlayers];
+                              next[i] = e.target.value;
+                              setGPlayers(next);
+                            }}
+                          />
+                        ))}
                         <div className="flex gap-2 mt-1">
                           <button
                             onPointerDown={() => saveEdit(r.id, g)}
@@ -848,7 +840,43 @@ export function Admin() {
                   {isAddingHere ? (
                     <div className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                       <p className="text-sm font-semibold text-gray-200">New Pairing</p>
-                      <PairingFormFields />
+                      <input
+                        className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                        placeholder="Group name (e.g. Group 1)"
+                        value={gName}
+                        onChange={(e) => setGName(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                          placeholder="4-digit PIN"
+                          value={gPin}
+                          onChange={(e) => setGPin(e.target.value)}
+                          maxLength={4}
+                          inputMode="numeric"
+                        />
+                        <button
+                          onPointerDown={() => setGPin(randomPin())}
+                          className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
+                        >
+                          Random PIN
+                        </button>
+                      </div>
+                      <p className="text-gray-400 text-xs">Players (up to 4):</p>
+                      {gPlayers.map((name, i) => (
+                        <input
+                          key={i}
+                          list="golfer-roster"
+                          className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                          placeholder={`Player ${i + 1}`}
+                          value={name}
+                          onChange={(e) => {
+                            const next = [...gPlayers];
+                            next[i] = e.target.value;
+                            setGPlayers(next);
+                          }}
+                        />
+                      ))}
                       <div className="flex gap-2 mt-1">
                         <button
                           onPointerDown={() => savePairing(r.id)}
