@@ -1,6 +1,9 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../hooks/useAuth';
 import {
+  createGolfer,
+  listGolfers,
+  deleteGolfer,
   createGroup,
   deleteGroup,
   listGroupsByRound,
@@ -9,14 +12,26 @@ import {
   deleteRound,
   updateRound,
 } from '../lib/firestore';
-import type { Group, Round, RoundFormat, Player } from '../types/tournament';
+import type { Golfer, Group, Round, RoundFormat, Player } from '../types/tournament';
 import { DEFAULT_PAR } from '../constants/wolf';
 import { nanoid } from '../lib/nanoid';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
 
+function randomPin() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 export function Admin() {
   const { tournament, logout } = useContext(AuthContext);
+
+  // Roster
+  const [golfers, setGolfers] = useState<Golfer[]>([]);
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const [newGolferName, setNewGolferName] = useState('');
+  const [golferSaving, setGolferSaving] = useState(false);
+
+  // Rounds
   const [rounds, setRounds] = useState<Round[]>([]);
   const [groupsByRound, setGroupsByRound] = useState<Record<string, Group[]>>({});
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
@@ -29,15 +44,40 @@ export function Admin() {
   const [rHoles, setRHoles] = useState(18);
   const [rSaving, setRSaving] = useState(false);
 
-  // Inline pairing form state (one at a time)
+  // Inline pairing form (one at a time)
   const [gName, setGName] = useState('');
   const [gPin, setGPin] = useState('');
   const [gPlayers, setGPlayers] = useState(['', '', '', '']);
   const [gSaving, setGSaving] = useState(false);
 
   useEffect(() => {
+    listGolfers(TOURNAMENT_ID).then((gs) =>
+      setGolfers(gs.sort((a, b) => a.name.localeCompare(b.name))),
+    );
     listRounds(TOURNAMENT_ID).then(setRounds);
   }, []);
+
+  // ── Roster ────────────────────────────────────────────────────────────────────
+
+  const addGolfer = async () => {
+    const name = newGolferName.trim();
+    if (!name) return;
+    setGolferSaving(true);
+    const id = nanoid();
+    await createGolfer(TOURNAMENT_ID, id, { name });
+    setGolfers((gs) =>
+      [...gs, { id, name }].sort((a, b) => a.name.localeCompare(b.name)),
+    );
+    setNewGolferName('');
+    setGolferSaving(false);
+  };
+
+  const removeGolfer = async (id: string) => {
+    await deleteGolfer(TOURNAMENT_ID, id);
+    setGolfers((gs) => gs.filter((g) => g.id !== id));
+  };
+
+  // ── Rounds ────────────────────────────────────────────────────────────────────
 
   const toggleExpand = async (roundId: string) => {
     if (expandedRound === roundId) {
@@ -56,13 +96,11 @@ export function Admin() {
   const openAddPairing = (roundId: string) => {
     setAddingGroupToRound(roundId);
     setGName('');
-    setGPin('');
+    setGPin(randomPin());
     setGPlayers(['', '', '', '']);
   };
 
-  const cancelAddPairing = () => {
-    setAddingGroupToRound(null);
-  };
+  const cancelAddPairing = () => setAddingGroupToRound(null);
 
   const savePairing = async (roundId: string) => {
     if (!gName.trim() || !gPin.trim()) return;
@@ -93,6 +131,8 @@ export function Admin() {
       [roundId]: (prev[roundId] ?? []).filter((g) => g.id !== groupId),
     }));
   };
+
+  // ── Round CRUD ────────────────────────────────────────────────────────────────
 
   const saveRound = async () => {
     if (!rName.trim()) return;
@@ -140,6 +180,8 @@ export function Admin() {
     setRounds((rs) => rs.map((r) => (r.id === round.id ? { ...r, status: next } : r)));
   };
 
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <header className="bg-gray-900 px-4 py-4 flex items-center justify-between border-b border-gray-700">
@@ -152,8 +194,70 @@ export function Admin() {
         </button>
       </header>
 
+      {/* Datalist for player autocomplete — rendered once, used by all player inputs */}
+      <datalist id="golfer-roster">
+        {golfers.map((g) => (
+          <option key={g.id} value={g.name} />
+        ))}
+      </datalist>
+
       <div className="p-4 max-w-lg mx-auto flex flex-col gap-4">
-        {/* Add round form */}
+
+        {/* ── Roster section ── */}
+        <div className="bg-gray-800 rounded-2xl overflow-hidden">
+          <button
+            onPointerDown={() => setRosterOpen((o) => !o)}
+            className="w-full px-4 py-4 flex items-center justify-between text-left"
+          >
+            <div>
+              <p className="font-bold text-lg">Golfer Roster</p>
+              <p className="text-gray-400 text-xs">{golfers.length} golfer{golfers.length !== 1 ? 's' : ''} — names auto-complete in pairings</p>
+            </div>
+            <span className="text-gray-500 text-sm ml-2">{rosterOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {rosterOpen && (
+            <div className="border-t border-gray-700 px-4 pb-4 pt-3 flex flex-col gap-3">
+              {/* Add golfer */}
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 bg-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm"
+                  placeholder="Golfer name"
+                  value={newGolferName}
+                  onChange={(e) => setNewGolferName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addGolfer()}
+                />
+                <button
+                  onPointerDown={addGolfer}
+                  disabled={golferSaving || !newGolferName.trim()}
+                  className="px-4 h-10 bg-green-600 rounded-xl font-semibold text-sm disabled:opacity-40"
+                >
+                  Add
+                </button>
+              </div>
+
+              {/* Golfer list */}
+              {golfers.length === 0 && (
+                <p className="text-gray-500 text-sm">No golfers yet.</p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {golfers.map((g) => (
+                  <div key={g.id} className="flex items-center justify-between bg-gray-700 rounded-xl px-3 py-2">
+                    <span className="text-sm">{g.name}</span>
+                    <button
+                      onPointerDown={() => removeGolfer(g.id)}
+                      className="text-red-400 text-xs font-medium px-1"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Add round form ── */}
         <div className="bg-gray-800 rounded-2xl p-4 flex flex-col gap-3">
           <h2 className="font-bold text-lg">Add Round</h2>
           <input
@@ -205,7 +309,7 @@ export function Admin() {
           </button>
         </div>
 
-        {/* Existing rounds */}
+        {/* ── Existing rounds ── */}
         {rounds.map((r) => {
           const isExpanded = expandedRound === r.id;
           const roundGroups = groupsByRound[r.id] ?? [];
@@ -283,18 +387,29 @@ export function Admin() {
                         value={gName}
                         onChange={(e) => setGName(e.target.value)}
                       />
-                      <input
-                        className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                        placeholder="PIN (4–6 digits)"
-                        value={gPin}
-                        onChange={(e) => setGPin(e.target.value)}
-                        maxLength={6}
-                        inputMode="numeric"
-                      />
+                      {/* PIN with generate button */}
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                          placeholder="4-digit PIN"
+                          value={gPin}
+                          onChange={(e) => setGPin(e.target.value)}
+                          maxLength={4}
+                          inputMode="numeric"
+                        />
+                        <button
+                          onPointerDown={() => setGPin(randomPin())}
+                          className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
+                        >
+                          Random PIN
+                        </button>
+                      </div>
+                      {/* Player slots — autocomplete from roster, free text allowed */}
                       <p className="text-gray-400 text-xs">Players (up to 4):</p>
                       {gPlayers.map((name, i) => (
                         <input
                           key={i}
+                          list="golfer-roster"
                           className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
                           placeholder={`Player ${i + 1}`}
                           value={name}

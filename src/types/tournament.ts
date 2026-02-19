@@ -3,6 +3,11 @@ export interface Player {
   name: string;
 }
 
+export interface Golfer {
+  id: string;
+  name: string;
+}
+
 export interface Group {
   id: string;
   name: string;
