@@ -1,73 +1,134 @@
-# React + TypeScript + Vite
+# AZGB Golf Tournament App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A mobile-first live scoring app for a private golf tournament spanning four rounds over a weekend. Built specifically for the AZGB crew — no accounts, no app store, just a PIN and a phone.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## What It Does
 
-## React Compiler
+- **Golfers** enter their group's PIN on arrival and immediately see their active rounds. They enter scores hole-by-hole as they play, with real-time leaderboard updates.
+- **The commissioner** uses a password-protected admin panel to set up all rounds and pairings before the tournament starts — no mid-round data entry required.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The app supports three scoring formats that can be mixed across rounds:
 
-## Expanding the ESLint configuration
+| Format | How it works |
+|---|---|
+| **Wolf** | Each hole, one player is the Wolf and decides to go lone or pick a partner. Points awarded per hole based on outcome. |
+| **Best Ball** | 4-person groups; best individual score on each hole counts toward the team total. Score tracked as ± par. |
+| **Scramble** | All players hit, best shot is selected, repeat. Team records a single score per hole. Supports 2-person pairs (Sat PM) or 4-person groups. |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Tournament Structure
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+The app is built around four named rounds:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- **Friday** — Wolf format, 18 holes
+- **Saturday AM** — Best Ball, 18 holes
+- **Saturday PM** — Scramble, 18 holes (2-person pairs)
+- **Sunday** — Wolf or Best Ball, 18 holes (configurable)
+
+Rounds are created by the admin and can be set to `pending`, `active`, or `complete`. Golfers only see rounds that are `active` or `complete` and that belong to their group.
+
+---
+
+## How It's Built
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 19, TypeScript, Vite 7 |
+| Styling | Tailwind CSS v4 |
+| Routing | React Router v7 |
+| Backend / DB | Firebase Firestore (real-time) |
+| Auth | PIN-based (no Firebase Auth) |
+| Hosting | nginx on a Linux VPS |
+
+### Data Model
+
+```
+tournaments/{tournamentId}
+  rounds/{roundId}          ← name, format, day, status, holes, par[]
+    scores/{groupId}        ← holes[], updatedAt (live score doc)
+  groups/{groupId}          ← name, pin, players[], roundId
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Groups self-identify their round via `roundId`. A group belongs to exactly one round, which makes pairings independent per round (different foursomes Friday vs. Saturday AM, 2-person pairs Saturday PM, etc.).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Session Handling
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+No login infrastructure. Session state is stored in `sessionStorage` — closing the tab clears the session; refreshing restores it via a single Firestore read. Admin session is separate and also PIN-protected.
+
+---
+
+## Admin Workflow
+
+1. Open the app, enter the admin PIN at the tournament ID prompt.
+2. Create each round (name, day, format, hole count).
+3. Expand a round card and add pairings — each pairing gets a group name, a unique PIN, and up to 4 players. For Sat PM scramble pairs, just fill 2 of the 4 player slots.
+4. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
+5. After the round finishes, flip it to `complete`.
+
+All pairings for the entire weekend can be entered in one session before the tournament begins.
+
+---
+
+## Golfer Workflow
+
+1. Open the URL on their phone (no app install needed — works as a PWA).
+2. Enter the tournament ID and their group's PIN.
+3. See their active rounds on the home screen.
+4. Tap a round → hole-by-hole scorecard.
+5. For Wolf: select the Wolf player and their decision (lone/partner) before locking the hole score.
+6. Lock each hole as they finish. Tap the leaderboard icon to see live standings.
+
+---
+
+## Local Development
+
+```bash
+# Install dependencies
+npm install
+
+# Create a .env.local with your Firebase project config
+cp .env.example .env.local   # (edit with your Firebase values)
+
+# Start dev server
+npm run dev
+
+# Run tests
+npm test
+
+# Build for production
+npm run build
 ```
+
+Required environment variables:
+
+```
+VITE_TOURNAMENT_ID=your-tournament-id
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+```
+
+---
+
+## Deployment
+
+The app is served as a static build from a VPS behind nginx. To deploy after pushing to `main`:
+
+```bash
+# On the server (or via SSH)
+bash /var/www/azgb/deploy.sh
+```
+
+The script pulls the latest code, runs `npm ci` and `npm run build`. nginx is already configured to serve the `dist/` directory — no restart needed.
+
+---
+
+## Firestore Security Rules
+
+Rounds and groups are readable by anyone with the tournament ID. Scores are writable by the group that owns them (enforced by document ID matching the group ID in the score doc). Admin writes are gated at the application level by the admin PIN.
