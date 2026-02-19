@@ -50,6 +50,7 @@ tournaments/{tournamentId}
   rounds/{roundId}          ← name, format, day, status, holes, par[]
     scores/{groupId}        ← holes[], updatedAt (live score doc)
   groups/{groupId}          ← name, pin, players[], roundId
+  golfers/{golferId}        ← name (master roster for admin autocomplete)
 ```
 
 Groups self-identify their round via `roundId`. A group belongs to exactly one round, which makes pairings independent per round (different foursomes Friday vs. Saturday AM, 2-person pairs Saturday PM, etc.).
@@ -63,12 +64,14 @@ No login infrastructure. Session state is stored in `sessionStorage` — closing
 ## Admin Workflow
 
 1. Open the app, enter the admin PIN at the tournament ID prompt.
-2. Create each round (name, day, format, hole count).
-3. Expand a round card and add pairings — each pairing gets a group name, a unique PIN, and up to 4 players. For Sat PM scramble pairs, just fill 2 of the 4 player slots.
-4. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
-5. After the round finishes, flip it to `complete`.
+2. **Build the golfer roster** — expand the Golfer Roster section and add every participant's name once. These names auto-complete in all player slots when building pairings.
+3. **Create rounds** — name, day, format, and hole count for each of the four rounds.
+4. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For Sat PM scramble pairs, fill just 2 of the 4 player slots.
+5. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline without deleting and re-creating.
+6. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
+7. After the round finishes, flip it to `complete`.
 
-All pairings for the entire weekend can be entered in one session before the tournament begins.
+All rounds and pairings for the entire weekend can be entered in one session before the tournament begins.
 
 ---
 
