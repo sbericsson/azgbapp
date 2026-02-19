@@ -39,7 +39,10 @@ export function useGroup(
   const [holes, setHoles] = useState<HoleScore[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const initializedRef = useRef(false);
+
+  // Always up-to-date reference to holes — avoids stale closure in saveHole
+  const holesRef = useRef<HoleScore[]>([]);
+  holesRef.current = holes;
 
   useEffect(() => {
     if (!tournamentId || !round || !groupId) {
@@ -47,7 +50,6 @@ export function useGroup(
       return;
     }
 
-    initializedRef.current = false;
     setLoading(true);
 
     const unsub = subscribeGroupScores(
@@ -57,14 +59,21 @@ export function useGroup(
       (doc) => {
         if (doc) {
           setScoreDoc(doc);
-          setHoles(doc.holes);
+          // Merge: keep local state for any unlocked holes (user may be entering data),
+          // but always accept locked holes from Firestore as the source of truth.
+          setHoles((prev) => {
+            if (prev.length === 0) return doc.holes;
+            return prev.map((localHole, i) => {
+              const remoteHole = doc.holes[i];
+              return remoteHole?.locked ? remoteHole : localHole;
+            });
+          });
         } else {
           // No existing doc — initialise with empty holes
           const initial = buildInitialHoles(round, players);
           setHoles(initial);
         }
         setLoading(false);
-        initializedRef.current = true;
       },
     );
 
@@ -86,26 +95,23 @@ export function useGroup(
     async (holeIndex: number, hole: HoleScore) => {
       if (!tournamentId || !round || !groupId) return;
 
-      // Optimistic update
+      // Optimistic local update
       setHoles((prev) => {
         const next = [...prev];
         next[holeIndex] = hole;
         return next;
       });
 
+      // Build the full holes array to persist: latest known state + this hole
+      const next = [...holesRef.current];
+      next[holeIndex] = hole;
+
       setSaving(true);
       try {
-        // Read current holes, apply update, write full doc
-        setHoles((prev) => {
-          const next = [...prev];
-          next[holeIndex] = hole;
-          saveGroupScores(tournamentId, round.id, groupId, next).finally(() =>
-            setSaving(false),
-          );
-          return next;
-        });
+        await saveGroupScores(tournamentId, round.id, groupId, next);
       } catch (err) {
         console.error('saveHole error', err);
+      } finally {
         setSaving(false);
       }
     },
