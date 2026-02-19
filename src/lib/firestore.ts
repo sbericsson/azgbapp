@@ -54,6 +54,24 @@ export async function listGroups(tournamentId: string): Promise<Group[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Group);
 }
 
+export async function listGroupsByRound(
+  tournamentId: string,
+  roundId: string,
+): Promise<Group[]> {
+  const q = query(groupsRef(tournamentId), where('roundId', '==', roundId));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Group);
+}
+
+export async function getGroupById(
+  tournamentId: string,
+  groupId: string,
+): Promise<Group | null> {
+  const snap = await getDoc(doc(db, 'tournaments', tournamentId, 'groups', groupId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Group;
+}
+
 export async function getGroupByPin(
   tournamentId: string,
   pin: string,

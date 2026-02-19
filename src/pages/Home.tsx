@@ -33,7 +33,7 @@ export function Home() {
         const myRounds = all.filter(
           (r) =>
             r.status !== 'pending' &&
-            (!group || r.groupIds.includes(group.id)),
+            (!group || group.roundId === r.id),
         );
         setRounds(myRounds);
       })

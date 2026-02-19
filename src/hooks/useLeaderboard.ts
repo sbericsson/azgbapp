@@ -38,7 +38,6 @@ export function useLeaderboard(
   }, [tournamentId, round?.id]);
 
   const entries: LeaderboardEntry[] = groups
-    .filter((g) => round?.groupIds.includes(g.id))
     .map((group) => {
       const doc = scoreDocs.find((d) => d.groupId === group.id);
       if (!doc) {

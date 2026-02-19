@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { listRounds, listGroups } from '../lib/firestore';
+import { listRounds, listGroupsByRound } from '../lib/firestore';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import type { Round, Group } from '../types/tournament';
 import { WolfLeaderboard } from '../components/leaderboard/WolfLeaderboard';
@@ -19,7 +19,7 @@ export function Leaderboard() {
 
   useEffect(() => {
     if (!roundId) return;
-    Promise.all([listRounds(TOURNAMENT_ID), listGroups(TOURNAMENT_ID)]).then(
+    Promise.all([listRounds(TOURNAMENT_ID), listGroupsByRound(TOURNAMENT_ID, roundId)]).then(
       ([rounds, grps]) => {
         setRound(rounds.find((r) => r.id === roundId) ?? null);
         setGroups(grps);

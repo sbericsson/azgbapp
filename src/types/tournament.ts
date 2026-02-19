@@ -8,6 +8,7 @@ export interface Group {
   name: string;
   pin: string;
   players: Player[];
+  roundId: string;
 }
 
 export type RoundFormat = 'wolf' | 'bestBall' | 'scramble';
@@ -21,7 +22,6 @@ export interface Round {
   status: RoundStatus;
   holes: number;
   par: number[];
-  groupIds: string[];
 }
 
 export interface Tournament {

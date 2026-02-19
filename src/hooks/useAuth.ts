@@ -5,7 +5,7 @@ import {
   useEffect,
   useCallback,
 } from 'react';
-import { getGroupByPin, getTournament, listGroups } from '../lib/firestore';
+import { getGroupByPin, getTournament, getGroupById } from '../lib/firestore';
 import type { Group, Tournament } from '../types/tournament';
 
 interface AuthState {
@@ -83,8 +83,7 @@ export function useAuthProvider(): AuthContextValue {
       }
       // Load group from Firestore if we have a groupId
       if (session.groupId) {
-        const groups = await listGroups(session.tournamentId).catch(() => []);
-        const group = groups.find((g) => g.id === session.groupId) ?? null;
+        const group = await getGroupById(session.tournamentId, session.groupId).catch(() => null);
         setState({
           tournamentId: session.tournamentId,
           tournament,
