@@ -9,6 +9,11 @@ service cloud.firestore {
       allow read: if true;
       allow write: if true;
 
+      match /golfers/{golferId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
       match /groups/{groupId} {
         allow read: if true;
         allow write: if true;
