@@ -40,8 +40,8 @@ export function computeCarryForHole(
     if (!h.locked) break;
     if (h.points.length === 0) break; // incomplete hole
     if (h.points.some((p) => p.pts > 0)) break; // decisive — carry was collected here
-    // all pts = 0 → tied → accumulate
-    carry += getBaseStakes(h);
+    // all pts = 0 → tied → accumulate base stake only (lone wolf bonus does not carry)
+    carry += WOLF_PARTNER_WIN_EACH;
   }
   return carry;
 }
@@ -191,10 +191,8 @@ export function wolfHoleResultDescription(
   // All-zero points → tied → carry rolls over to next hole
   const isTied = hole.points.length > 0 && hole.points.every((p) => p.pts === 0);
   if (isTied) {
-    const baseStake = hole.loneWolfType === 'pre' ? WOLF_LONE_PRE_WIN
-      : hole.loneWolfType === 'post' ? WOLF_LONE_POST_WIN
-      : WOLF_PARTNER_WIN_EACH;
-    return `Tie — ${hole.carry + baseStake} pts carry to next hole`;
+    // Always 1 pt base carries — lone wolf bonus does not carry
+    return `Tie — ${hole.carry + WOLF_PARTNER_WIN_EACH} pts carry to next hole`;
   }
 
   if (hole.loneWolfType === 'pre') {

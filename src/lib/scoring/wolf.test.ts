@@ -280,19 +280,37 @@ describe('computeCarryForHole', () => {
   });
 
   it('accumulates carry from consecutive tied holes', () => {
-    // Hole 0: lone pre tie → carry = 3
+    // Hole 0: lone pre tie → only 1 pt base carry (not 3)
     const h0 = withComputedPoints(
       { ...emptyWolfHole(players, 0), locked: true, loneWolfType: 'pre' as const,
         scores: [{ playerId: 'p1', gross: 4 }, { playerId: 'p2', gross: 4 }, { playerId: 'p3', gross: 5 }, { playerId: 'p4', gross: 6 }] },
       players, 0,
     );
-    // Hole 1: partner tie → carry = 1
+    // Hole 1: partner tie → 1 pt base carry
     const h1 = withComputedPoints(
       { ...emptyWolfHole(players, 1), locked: true, loneWolfType: null, partnerId: 'p3',
         scores: [{ playerId: 'p1', gross: 4 }, { playerId: 'p2', gross: 4 }, { playerId: 'p3', gross: 4 }, { playerId: 'p4', gross: 4 }] },
-      players, 3, // carry from h0
+      players, 1, // carry from h0
     );
-    expect(computeCarryForHole([h0, h1], 2)).toBe(4); // 3 + 1
+    expect(computeCarryForHole([h0, h1], 2)).toBe(2); // 1 + 1
+  });
+
+  it('lone wolf tie contributes only 1 pt carry (not full lone wolf stakes)', () => {
+    // Lone wolf pre tie: should contribute 1 carry, not 3
+    const h0 = withComputedPoints(
+      { ...emptyWolfHole(players, 0), locked: true, loneWolfType: 'pre' as const,
+        scores: [{ playerId: 'p1', gross: 4 }, { playerId: 'p2', gross: 4 }, { playerId: 'p3', gross: 5 }, { playerId: 'p4', gross: 6 }] },
+      players, 0,
+    );
+    expect(computeCarryForHole([h0], 1)).toBe(1); // base stake only, not WOLF_LONE_PRE_WIN (3)
+
+    // Lone wolf post tie: should contribute 1 carry, not 2
+    const h1 = withComputedPoints(
+      { ...emptyWolfHole(players, 1), locked: true, loneWolfType: 'post' as const,
+        scores: [{ playerId: 'p2', gross: 4 }, { playerId: 'p1', gross: 4 }, { playerId: 'p3', gross: 5 }, { playerId: 'p4', gross: 6 }] },
+      players, 0,
+    );
+    expect(computeCarryForHole([h1], 1)).toBe(1); // base stake only, not WOLF_LONE_POST_WIN (2)
   });
 
   it('resets carry after a decisive hole', () => {
