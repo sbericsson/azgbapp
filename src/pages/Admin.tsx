@@ -5,6 +5,7 @@ import {
   listGolfers,
   deleteGolfer,
   createGroup,
+  updateGroup,
   deleteGroup,
   listGroupsByRound,
   createRound,
@@ -36,6 +37,7 @@ export function Admin() {
   const [groupsByRound, setGroupsByRound] = useState<Record<string, Group[]>>({});
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
   const [addingGroupToRound, setAddingGroupToRound] = useState<string | null>(null);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
 
   // Round form
   const [rName, setRName] = useState('');
@@ -83,10 +85,12 @@ export function Admin() {
     if (expandedRound === roundId) {
       setExpandedRound(null);
       setAddingGroupToRound(null);
+      setEditingGroupId(null);
       return;
     }
     setExpandedRound(roundId);
     setAddingGroupToRound(null);
+    setEditingGroupId(null);
     if (!groupsByRound[roundId]) {
       const grps = await listGroupsByRound(TOURNAMENT_ID, roundId);
       setGroupsByRound((prev) => ({ ...prev, [roundId]: grps }));
@@ -94,6 +98,7 @@ export function Admin() {
   };
 
   const openAddPairing = (roundId: string) => {
+    setEditingGroupId(null);
     setAddingGroupToRound(roundId);
     setGName('');
     setGPin(randomPin());
@@ -101,6 +106,41 @@ export function Admin() {
   };
 
   const cancelAddPairing = () => setAddingGroupToRound(null);
+
+  const openEdit = (group: Group) => {
+    setAddingGroupToRound(null);
+    setEditingGroupId(group.id);
+    setGName(group.name);
+    setGPin(group.pin);
+    const names = group.players.map((p) => p.name);
+    while (names.length < 4) names.push('');
+    setGPlayers(names);
+  };
+
+  const saveEdit = async (roundId: string, group: Group) => {
+    if (!gName.trim() || !gPin.trim()) return;
+    setGSaving(true);
+    // Preserve existing player IDs by slot so Wolf scoring stays consistent
+    const players: Player[] = gPlayers
+      .filter((n) => n.trim())
+      .map((name, i) => ({
+        id: group.players[i]?.id ?? nanoid(),
+        name: name.trim(),
+      }));
+    await updateGroup(TOURNAMENT_ID, group.id, {
+      name: gName.trim(),
+      pin: gPin.trim(),
+      players,
+    });
+    setGroupsByRound((prev) => ({
+      ...prev,
+      [roundId]: (prev[roundId] ?? []).map((g) =>
+        g.id === group.id ? { ...g, name: gName.trim(), pin: gPin.trim(), players } : g,
+      ),
+    }));
+    setEditingGroupId(null);
+    setGSaving(false);
+  };
 
   const savePairing = async (roundId: string) => {
     if (!gName.trim() || !gPin.trim()) return;
@@ -357,25 +397,93 @@ export function Admin() {
                     <p className="text-gray-500 text-sm">No pairings yet.</p>
                   )}
 
-                  {roundGroups.map((g) => (
-                    <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex items-start justify-between">
-                      <div>
-                        <p className="font-medium text-sm">{g.name}</p>
-                        <p className="text-gray-400 text-xs">PIN: {g.pin}</p>
-                        <div className="flex flex-col gap-0.5 mt-1">
-                          {g.players.map((p) => (
-                            <p key={p.id} className="text-gray-300 text-xs">• {p.name}</p>
-                          ))}
+                  {roundGroups.map((g) =>
+                    editingGroupId === g.id ? (
+                      /* ── Inline edit form ── */
+                      <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
+                        <p className="text-sm font-semibold text-gray-200">Edit Pairing</p>
+                        <input
+                          className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                          placeholder="Group name"
+                          value={gName}
+                          onChange={(e) => setGName(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                            placeholder="4-digit PIN"
+                            value={gPin}
+                            onChange={(e) => setGPin(e.target.value)}
+                            maxLength={4}
+                            inputMode="numeric"
+                          />
+                          <button
+                            onPointerDown={() => setGPin(randomPin())}
+                            className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
+                          >
+                            Random PIN
+                          </button>
+                        </div>
+                        <p className="text-gray-400 text-xs">Players (up to 4):</p>
+                        {gPlayers.map((name, i) => (
+                          <input
+                            key={i}
+                            list="golfer-roster"
+                            className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                            placeholder={`Player ${i + 1}`}
+                            value={name}
+                            onChange={(e) => {
+                              const next = [...gPlayers];
+                              next[i] = e.target.value;
+                              setGPlayers(next);
+                            }}
+                          />
+                        ))}
+                        <div className="flex gap-2 mt-1">
+                          <button
+                            onPointerDown={() => saveEdit(r.id, g)}
+                            disabled={gSaving || !gName.trim() || !gPin.trim()}
+                            className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
+                          >
+                            {gSaving ? 'Saving…' : 'Save'}
+                          </button>
+                          <button
+                            onPointerDown={() => setEditingGroupId(null)}
+                            className="px-4 h-10 bg-gray-600 rounded-lg text-sm text-gray-300"
+                          >
+                            Cancel
+                          </button>
                         </div>
                       </div>
-                      <button
-                        onPointerDown={() => removeGroup(r.id, g.id)}
-                        className="text-red-400 text-xs font-medium px-1"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  ))}
+                    ) : (
+                      /* ── View row ── */
+                      <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex items-start justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{g.name}</p>
+                          <p className="text-gray-400 text-xs">PIN: {g.pin}</p>
+                          <div className="flex flex-col gap-0.5 mt-1">
+                            {g.players.map((p) => (
+                              <p key={p.id} className="text-gray-300 text-xs">• {p.name}</p>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1.5">
+                          <button
+                            onPointerDown={() => openEdit(g)}
+                            className="text-blue-400 text-xs font-medium px-1"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onPointerDown={() => removeGroup(r.id, g.id)}
+                            className="text-red-400 text-xs font-medium px-1"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ),
+                  )}
 
                   {/* Inline add pairing form */}
                   {isAddingHere ? (
