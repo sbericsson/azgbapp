@@ -26,20 +26,25 @@ export function Login() {
     }
     setLoading(true);
     setError('');
-    // Try admin first, then group
-    const isAdmin = await loginAsAdmin(TOURNAMENT_ID, pin);
-    if (isAdmin) {
-      navigate('/admin');
-      return;
+    try {
+      const isAdmin = await loginAsAdmin(TOURNAMENT_ID, pin);
+      if (isAdmin) {
+        navigate('/admin');
+        return;
+      }
+      const isGroup = await loginAsGroup(TOURNAMENT_ID, pin);
+      if (isGroup) {
+        navigate('/');
+        return;
+      }
+      setError('Invalid PIN. Check with your group.');
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Connection error. Please try again.');
+    } finally {
+      setLoading(false);
+      setPin('');
     }
-    const isGroup = await loginAsGroup(TOURNAMENT_ID, pin);
-    if (isGroup) {
-      navigate('/');
-      return;
-    }
-    setError('Invalid PIN. Check with your group.');
-    setLoading(false);
-    setPin('');
   };
 
   const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
