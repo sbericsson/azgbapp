@@ -220,6 +220,28 @@ export function Admin() {
     setRounds((rs) => rs.map((r) => (r.id === round.id ? { ...r, status: next } : r)));
   };
 
+  // ── Derived: golfers available for the currently open form ───────────────────
+
+  // Find which round the open form belongs to
+  const activeFormRoundId =
+    addingGroupToRound ??
+    (editingGroupId
+      ? (Object.entries(groupsByRound).find(([, gs]) =>
+          gs.some((g) => g.id === editingGroupId),
+        )?.[0] ?? null)
+      : null);
+
+  // Names already assigned to other pairings in that round
+  const takenNames = activeFormRoundId
+    ? new Set(
+        (groupsByRound[activeFormRoundId] ?? [])
+          .filter((g) => g.id !== editingGroupId)
+          .flatMap((g) => g.players.map((p) => p.name)),
+      )
+    : new Set<string>();
+
+  const availableGolfers = golfers.filter((g) => !takenNames.has(g.name));
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
@@ -234,9 +256,9 @@ export function Admin() {
         </button>
       </header>
 
-      {/* Datalist for player autocomplete — rendered once, used by all player inputs */}
+      {/* Datalist for player autocomplete — filtered to exclude players already in this round */}
       <datalist id="golfer-roster">
-        {golfers.map((g) => (
+        {availableGolfers.map((g) => (
           <option key={g.id} value={g.name} />
         ))}
       </datalist>
