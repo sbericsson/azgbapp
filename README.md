@@ -83,7 +83,7 @@ All rounds and pairings for the entire weekend can be entered in one session bef
 2. Enter the tournament ID and their group's PIN.
 3. See their active rounds on the home screen.
 4. Tap a round → hole-by-hole scorecard.
-5. For Wolf: select the Wolf player and their decision (lone/partner) before locking the hole score.
+5. For Wolf: the Wolf rotates automatically each hole. Select the Wolf's decision (Lone Wolf pre/post or pick a partner) and enter all four scores before locking.
 6. Lock each hole as they finish. Tap the leaderboard icon to see live standings.
 
 ---
@@ -136,4 +136,4 @@ The script pulls the latest code, runs `npm ci` and `npm run build`. nginx is al
 
 ## Firestore Security Rules
 
-Rounds and groups are readable by anyone with the tournament ID. Scores are writable by the group that owns them (enforced by document ID matching the group ID in the score doc). Admin writes are gated at the application level by the admin PIN.
+All subcollections (rounds, groups, scores, golfers, courses) are readable by anyone with the tournament ID. Scores are writable by the group that owns them (enforced by document ID matching the group ID in the score doc). Admin writes are gated at the application level by the admin PIN.
