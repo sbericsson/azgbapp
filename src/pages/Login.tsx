@@ -11,28 +11,23 @@ export function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const append = (digit: string) => {
-    if (pin.length >= 6) return;
-    setPin((p) => p + digit);
-    setError('');
-  };
   const backspace = () => setPin((p) => p.slice(0, -1));
   const clear = () => setPin('');
 
-  const submit = async () => {
-    if (pin.length < 4) {
-      setError('PIN must be at least 4 digits');
+  const submit = async (pinValue = pin) => {
+    if (pinValue.length < 4) {
+      setError('PIN must be 4 digits');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const isAdmin = await loginAsAdmin(TOURNAMENT_ID, pin);
+      const isAdmin = await loginAsAdmin(TOURNAMENT_ID, pinValue);
       if (isAdmin) {
         navigate('/admin');
         return;
       }
-      const isGroup = await loginAsGroup(TOURNAMENT_ID, pin);
+      const isGroup = await loginAsGroup(TOURNAMENT_ID, pinValue);
       if (isGroup) {
         navigate('/');
         return;
@@ -45,6 +40,14 @@ export function Login() {
       setLoading(false);
       setPin('');
     }
+  };
+
+  const append = (digit: string) => {
+    if (pin.length >= 4) return;
+    const next = pin + digit;
+    setPin(next);
+    setError('');
+    if (next.length === 4) submit(next);
   };
 
   const digits = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
@@ -60,7 +63,7 @@ export function Login() {
 
         {/* PIN display */}
         <div className="flex justify-center gap-3 mb-6">
-          {Array.from({ length: 6 }, (_, i) => (
+          {Array.from({ length: 4 }, (_, i) => (
             <div
               key={i}
               className={`w-10 h-12 rounded-lg border-2 flex items-center justify-center text-xl font-bold
