@@ -19,7 +19,7 @@ The app supports three scoring formats that can be mixed across rounds:
 
 ---
 
-## Tournament Structure
+## AZGB Structure
 
 The app is built around four named rounds:
 
