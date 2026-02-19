@@ -112,7 +112,7 @@ export function Login() {
         </div>
 
         <button
-          onPointerDown={submit}
+          onPointerDown={() => submit()}
           disabled={loading || pin.length < 4}
           className="w-full mt-6 h-16 rounded-2xl bg-green-600 text-white text-xl font-bold
             active:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed select-none"
