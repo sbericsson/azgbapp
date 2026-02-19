@@ -1,0 +1,193 @@
+import {
+  doc,
+  collection,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  onSnapshot,
+  type Unsubscribe,
+} from 'firebase/firestore';
+import { db } from '../firebase';
+import type { Tournament, Group, Round } from '../types/tournament';
+import type { GroupScoreDoc, HoleScore } from '../types/scoring';
+
+// ── Tournaments ────────────────────────────────────────────────────────────────
+
+export async function createTournament(
+  id: string,
+  data: Omit<Tournament, 'id'>,
+): Promise<void> {
+  await setDoc(doc(db, 'tournaments', id), data);
+}
+
+export async function getTournament(id: string): Promise<Tournament | null> {
+  const snap = await getDoc(doc(db, 'tournaments', id));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Tournament;
+}
+
+export async function listTournaments(): Promise<Tournament[]> {
+  const snap = await getDocs(collection(db, 'tournaments'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament);
+}
+
+// ── Groups ─────────────────────────────────────────────────────────────────────
+
+export function groupsRef(tournamentId: string) {
+  return collection(db, 'tournaments', tournamentId, 'groups');
+}
+
+export async function createGroup(
+  tournamentId: string,
+  id: string,
+  data: Omit<Group, 'id'>,
+): Promise<void> {
+  await setDoc(doc(db, 'tournaments', tournamentId, 'groups', id), data);
+}
+
+export async function listGroups(tournamentId: string): Promise<Group[]> {
+  const snap = await getDocs(groupsRef(tournamentId));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Group);
+}
+
+export async function getGroupByPin(
+  tournamentId: string,
+  pin: string,
+): Promise<Group | null> {
+  const q = query(groupsRef(tournamentId), where('pin', '==', pin));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() } as Group;
+}
+
+export async function updateGroup(
+  tournamentId: string,
+  groupId: string,
+  data: Partial<Omit<Group, 'id'>>,
+): Promise<void> {
+  await updateDoc(doc(db, 'tournaments', tournamentId, 'groups', groupId), data);
+}
+
+export async function deleteGroup(
+  tournamentId: string,
+  groupId: string,
+): Promise<void> {
+  await deleteDoc(doc(db, 'tournaments', tournamentId, 'groups', groupId));
+}
+
+// ── Rounds ─────────────────────────────────────────────────────────────────────
+
+export function roundsRef(tournamentId: string) {
+  return collection(db, 'tournaments', tournamentId, 'rounds');
+}
+
+export async function createRound(
+  tournamentId: string,
+  id: string,
+  data: Omit<Round, 'id'>,
+): Promise<void> {
+  await setDoc(doc(db, 'tournaments', tournamentId, 'rounds', id), data);
+}
+
+export async function listRounds(tournamentId: string): Promise<Round[]> {
+  const snap = await getDocs(roundsRef(tournamentId));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Round);
+}
+
+export async function updateRound(
+  tournamentId: string,
+  roundId: string,
+  data: Partial<Omit<Round, 'id'>>,
+): Promise<void> {
+  await updateDoc(
+    doc(db, 'tournaments', tournamentId, 'rounds', roundId),
+    data,
+  );
+}
+
+export async function deleteRound(
+  tournamentId: string,
+  roundId: string,
+): Promise<void> {
+  await deleteDoc(doc(db, 'tournaments', tournamentId, 'rounds', roundId));
+}
+
+// ── Scores ─────────────────────────────────────────────────────────────────────
+
+export function scoreDocRef(
+  tournamentId: string,
+  roundId: string,
+  groupId: string,
+) {
+  return doc(
+    db,
+    'tournaments',
+    tournamentId,
+    'rounds',
+    roundId,
+    'scores',
+    groupId,
+  );
+}
+
+export function scoresCollectionRef(tournamentId: string, roundId: string) {
+  return collection(
+    db,
+    'tournaments',
+    tournamentId,
+    'rounds',
+    roundId,
+    'scores',
+  );
+}
+
+export async function saveGroupScores(
+  tournamentId: string,
+  roundId: string,
+  groupId: string,
+  holes: HoleScore[],
+): Promise<void> {
+  await setDoc(
+    scoreDocRef(tournamentId, roundId, groupId),
+    { groupId, updatedAt: Date.now(), holes },
+    { merge: true },
+  );
+}
+
+export function subscribeGroupScores(
+  tournamentId: string,
+  roundId: string,
+  groupId: string,
+  callback: (doc: GroupScoreDoc | null) => void,
+): Unsubscribe {
+  return onSnapshot(
+    scoreDocRef(tournamentId, roundId, groupId),
+    (snap) => {
+      if (!snap.exists()) {
+        callback(null);
+        return;
+      }
+      callback(snap.data() as GroupScoreDoc);
+    },
+    (err) => console.error('subscribeGroupScores error', err),
+  );
+}
+
+export function subscribeAllScores(
+  tournamentId: string,
+  roundId: string,
+  callback: (docs: GroupScoreDoc[]) => void,
+): Unsubscribe {
+  return onSnapshot(
+    scoresCollectionRef(tournamentId, roundId),
+    (snap) => {
+      callback(snap.docs.map((d) => d.data() as GroupScoreDoc));
+    },
+    (err) => console.error('subscribeAllScores error', err),
+  );
+}

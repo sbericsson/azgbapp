@@ -1,0 +1,62 @@
+import { type ReactElement, useContext } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthContext, useAuthProvider } from './hooks/useAuth';
+import { Login } from './pages/Login';
+import { Admin } from './pages/Admin';
+import { Home } from './pages/Home';
+import { Scorecard } from './pages/Scorecard';
+import { Leaderboard } from './pages/Leaderboard';
+
+function Spinner() {
+  return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <p className="text-gray-400">Loading…</p>
+    </div>
+  );
+}
+
+/** Root: Login when not auth'd; redirect admin → /admin; group → Home */
+function RootRoute() {
+  const { group, isAdmin, loading } = useContext(AuthContext);
+  if (loading) return <Spinner />;
+  if (isAdmin) return <Navigate to="/admin" replace />;
+  if (group) return <Home />;
+  return <Login />;
+}
+
+function ProtectedGroupRoute({ element }: { element: ReactElement }) {
+  const { group, isAdmin, loading } = useContext(AuthContext);
+  if (loading) return <Spinner />;
+  if (!group && !isAdmin) return <Navigate to="/" replace />;
+  return element;
+}
+
+function ProtectedAdminRoute({ element }: { element: ReactElement }) {
+  const { isAdmin, loading } = useContext(AuthContext);
+  if (loading) return <Spinner />;
+  if (!isAdmin) return <Navigate to="/" replace />;
+  return element;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<RootRoute />} />
+      <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
+      <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
+      <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+export default function App() {
+  const auth = useAuthProvider();
+  return (
+    <AuthContext.Provider value={auth}>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthContext.Provider>
+  );
+}
