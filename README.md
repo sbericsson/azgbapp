@@ -47,10 +47,11 @@ Rounds are created by the admin and can be set to `pending`, `active`, or `compl
 
 ```
 tournaments/{tournamentId}
-  rounds/{roundId}          ← name, format, day, status, holes, par[]
+  rounds/{roundId}          ← name, format, day, status, holes, par[], courseId?
     scores/{groupId}        ← holes[], updatedAt (live score doc)
   groups/{groupId}          ← name, pin, players[], roundId
   golfers/{golferId}        ← name (master roster for admin autocomplete)
+  courses/{courseId}        ← name, holes, par[]
 ```
 
 Groups self-identify their round via `roundId`. A group belongs to exactly one round, which makes pairings independent per round (different foursomes Friday vs. Saturday AM, 2-person pairs Saturday PM, etc.).
@@ -65,11 +66,12 @@ No login infrastructure. Session state is stored in `sessionStorage` — closing
 
 1. Open the app, enter the admin PIN at the tournament ID prompt.
 2. **Build the golfer roster** — expand the Golfer Roster section and add every participant's name once. These names auto-complete in all player slots when building pairings.
-3. **Create rounds** — name, day, format, and hole count for each of the four rounds.
-4. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For Sat PM scramble pairs, fill just 2 of the 4 player slots.
-5. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline without deleting and re-creating.
-6. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
-7. After the round finishes, flip it to `complete`.
+3. **Add golf courses** — expand the Golf Courses section and add each course by name. Tap each hole to cycle its par (3 / 4 / 5); total par updates live. Courses can be edited or deleted at any time.
+4. **Create rounds** — name, day, format, and hole count for each of the four rounds. Select a course from the dropdown to pre-fill the per-hole par values, or set them manually. Par values can be adjusted per-hole even after a course is selected.
+5. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For Sat PM scramble pairs, fill just 2 of the 4 player slots.
+6. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline without deleting and re-creating.
+7. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
+8. After the round finishes, flip it to `complete`.
 
 All rounds and pairings for the entire weekend can be entered in one session before the tournament begins.
 

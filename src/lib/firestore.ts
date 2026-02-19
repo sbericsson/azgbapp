@@ -12,7 +12,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Tournament, Group, Golfer, Round } from '../types/tournament';
+import type { Tournament, Group, Golfer, Course, Round } from '../types/tournament';
 import type { GroupScoreDoc, HoleScore } from '../types/scoring';
 
 // ── Tournaments ────────────────────────────────────────────────────────────────
@@ -33,6 +33,40 @@ export async function getTournament(id: string): Promise<Tournament | null> {
 export async function listTournaments(): Promise<Tournament[]> {
   const snap = await getDocs(collection(db, 'tournaments'));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament);
+}
+
+// ── Courses ────────────────────────────────────────────────────────────────────
+
+export function coursesRef(tournamentId: string) {
+  return collection(db, 'tournaments', tournamentId, 'courses');
+}
+
+export async function createCourse(
+  tournamentId: string,
+  id: string,
+  data: Omit<Course, 'id'>,
+): Promise<void> {
+  await setDoc(doc(db, 'tournaments', tournamentId, 'courses', id), data);
+}
+
+export async function listCourses(tournamentId: string): Promise<Course[]> {
+  const snap = await getDocs(coursesRef(tournamentId));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Course);
+}
+
+export async function updateCourse(
+  tournamentId: string,
+  courseId: string,
+  data: Partial<Omit<Course, 'id'>>,
+): Promise<void> {
+  await updateDoc(doc(db, 'tournaments', tournamentId, 'courses', courseId), data);
+}
+
+export async function deleteCourse(
+  tournamentId: string,
+  courseId: string,
+): Promise<void> {
+  await deleteDoc(doc(db, 'tournaments', tournamentId, 'courses', courseId));
 }
 
 // ── Golfers (master roster) ────────────────────────────────────────────────────

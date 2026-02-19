@@ -27,6 +27,14 @@ export interface Round {
   status: RoundStatus;
   holes: number;
   par: number[];
+  courseId?: string;
+}
+
+export interface Course {
+  id: string;
+  name: string;
+  holes: number;
+  par: number[];
 }
 
 export interface Tournament {
