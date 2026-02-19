@@ -5,12 +5,54 @@ import {
   createCourse, listCourses, updateCourse, deleteCourse,
   createGroup, updateGroup, deleteGroup, listGroupsByRound,
   createRound, listRounds, deleteRound, updateRound,
+  listAllScores,
 } from '../lib/firestore';
 import type { Golfer, Course, Group, Round, RoundFormat, Player } from '../types/tournament';
+import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
 import { DEFAULT_PAR } from '../constants/wolf';
+import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
+import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
+import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { nanoid } from '../lib/nanoid';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
+
+interface GroupSummary {
+  groupId: string;
+  score: number;
+  holesCompleted: number;
+  playerPoints?: { playerId: string; pts: number }[];
+}
+
+function computeGroupSummary(
+  group: Group,
+  round: Round,
+  scoreDocs: GroupScoreDoc[],
+): GroupSummary {
+  const doc = scoreDocs.find((d) => d.groupId === group.id);
+  if (!doc) return { groupId: group.id, score: 0, holesCompleted: 0 };
+  const lockedHoles = doc.holes.filter((h) => h.locked);
+  const holesCompleted = lockedHoles.length;
+  if (round.format === 'wolf') {
+    const wolfHoles = lockedHoles.filter(isWolfHole) as WolfHoleScore[];
+    const playerPoints = group.players.map((p) => ({
+      playerId: p.id,
+      pts: totalWolfPoints(wolfHoles, p.id),
+    }));
+    return {
+      groupId: group.id,
+      score: playerPoints.reduce((s, p) => s + p.pts, 0),
+      holesCompleted,
+      playerPoints,
+    };
+  }
+  if (round.format === 'bestBall') {
+    const bbHoles = lockedHoles.filter(isBestBallHole) as BestBallHoleScore[];
+    return { groupId: group.id, score: bestBallTotalToPar(bbHoles, round.par), holesCompleted };
+  }
+  const sHoles = lockedHoles.filter(isScrambleHole) as ScrambleHoleScore[];
+  return { groupId: group.id, score: scrambleTotalToPar(sHoles, round.par), holesCompleted };
+}
 
 function randomPin(excludePin?: string) {
   let pin: string;
@@ -94,6 +136,7 @@ export function Admin() {
   // Rounds
   const [rounds, setRounds] = useState<Round[]>([]);
   const [groupsByRound, setGroupsByRound] = useState<Record<string, Group[]>>({});
+  const [scoresByRound, setScoresByRound] = useState<Record<string, GroupScoreDoc[]>>({});
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
   const [addingGroupToRound, setAddingGroupToRound] = useState<string | null>(null);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -249,10 +292,12 @@ export function Admin() {
     setExpandedRound(roundId);
     setAddingGroupToRound(null);
     setEditingGroupId(null);
-    if (!groupsByRound[roundId]) {
-      const grps = await listGroupsByRound(TOURNAMENT_ID, roundId);
-      setGroupsByRound((prev) => ({ ...prev, [roundId]: grps }));
-    }
+    const [grps, scoreDocs] = await Promise.all([
+      listGroupsByRound(TOURNAMENT_ID, roundId),
+      listAllScores(TOURNAMENT_ID, roundId),
+    ]);
+    setGroupsByRound((prev) => ({ ...prev, [roundId]: grps }));
+    setScoresByRound((prev) => ({ ...prev, [roundId]: scoreDocs }));
   };
 
   const openAddPairing = (roundId: string) => {
@@ -706,6 +751,16 @@ export function Admin() {
           const courseName = r.courseId ? coursesById[r.courseId]?.name : null;
           const totalPar = r.par.reduce((s, v) => s + v, 0);
 
+            const roundScoreDocs = scoresByRound[r.id] ?? [];
+          const groupSummaries = roundGroups.map((g) => computeGroupSummary(g, r, roundScoreDocs));
+          const playedSummaries = groupSummaries.filter((s) => s.holesCompleted > 0);
+          const winnerGroupId = playedSummaries.length > 0
+            ? (r.format === 'wolf'
+                ? playedSummaries.reduce((best, s) => s.score >= best.score ? s : best, playedSummaries[0])
+                : playedSummaries.reduce((best, s) => s.score <= best.score ? s : best, playedSummaries[0])
+              ).groupId
+            : null;
+
           return (
             <div key={r.id} className="bg-gray-800 rounded-2xl overflow-hidden">
               {/* Round header */}
@@ -749,8 +804,9 @@ export function Admin() {
                     <p className="text-gray-500 text-sm">No pairings yet.</p>
                   )}
 
-                  {roundGroups.map((g) =>
-                    editingGroupId === g.id ? (
+                  {roundGroups.map((g) => {
+                    const summary = groupSummaries.find((s) => s.groupId === g.id);
+                    return editingGroupId === g.id ? (
                       <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                         <p className="text-sm font-semibold text-gray-200">Edit Pairing</p>
                         <input
@@ -769,7 +825,7 @@ export function Admin() {
                             inputMode="numeric"
                           />
                           <button
-                            onPointerDown={() => setGPin(randomPin())}
+                            onPointerDown={() => setGPin(randomPin(tournament?.adminPin))}
                             className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
                           >
                             Random PIN
@@ -819,16 +875,36 @@ export function Admin() {
                       </div>
                     ) : (
                       <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-sm">{g.name}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            {g.id === winnerGroupId && <span>🥇</span>}
+                            <p className="font-medium text-sm">{g.name}</p>
+                          </div>
                           <p className="text-gray-400 text-xs">PIN: {g.pin}</p>
                           <div className="flex flex-col gap-0.5 mt-1">
-                            {g.players.map((p) => (
-                              <p key={p.id} className="text-gray-300 text-xs">• {p.name}</p>
-                            ))}
+                            {g.players.map((p) => {
+                              const ppts = summary?.playerPoints?.find((pp) => pp.playerId === p.id);
+                              return (
+                                <p key={p.id} className="text-gray-300 text-xs flex items-center justify-between pr-2">
+                                  <span>• {p.name}</span>
+                                  {ppts && ppts.pts > 0 && <span className="text-yellow-400">{ppts.pts}pts</span>}
+                                </p>
+                              );
+                            })}
                           </div>
+                          {summary && summary.holesCompleted > 0 && (
+                            <p className="text-gray-400 text-xs mt-1">
+                              {r.format === 'wolf'
+                                ? `${summary.score} pts`
+                                : summary.score === 0 ? 'E'
+                                : summary.score > 0 ? `+${summary.score}`
+                                : `${summary.score}`
+                              }
+                              {' · '}{summary.holesCompleted}/{r.holes} holes
+                            </p>
+                          )}
                         </div>
-                        <div className="flex flex-col items-end gap-1.5">
+                        <div className="flex flex-col items-end gap-1.5 ml-2">
                           <button
                             onPointerDown={() => openEdit(g)}
                             className="text-blue-400 text-xs font-medium px-1"
@@ -843,8 +919,8 @@ export function Admin() {
                           </button>
                         </div>
                       </div>
-                    ),
-                  )}
+                    );
+                  })}
 
                   {isAddingHere ? (
                     <div className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
@@ -865,7 +941,7 @@ export function Admin() {
                           inputMode="numeric"
                         />
                         <button
-                          onPointerDown={() => setGPin(randomPin())}
+                          onPointerDown={() => setGPin(randomPin(tournament?.adminPin))}
                           className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
                         >
                           Random PIN

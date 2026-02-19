@@ -267,6 +267,14 @@ export function subscribeGroupScores(
   );
 }
 
+export async function listAllScores(
+  tournamentId: string,
+  roundId: string,
+): Promise<GroupScoreDoc[]> {
+  const snap = await getDocs(scoresCollectionRef(tournamentId, roundId));
+  return snap.docs.map((d) => d.data() as GroupScoreDoc);
+}
+
 export function subscribeAllScores(
   tournamentId: string,
   roundId: string,
