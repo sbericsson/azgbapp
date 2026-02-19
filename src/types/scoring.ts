@@ -17,6 +17,7 @@ export interface WolfHoleScore {
   partnerId: string | null;
   scores: PlayerScore[];
   points: PlayerPoints[];
+  carry: number; // accumulated carry points in play when this hole was played
   locked: boolean;
 }
 

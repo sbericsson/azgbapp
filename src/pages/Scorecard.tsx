@@ -11,7 +11,12 @@ import { WolfControls } from '../components/scorecard/WolfControls';
 import { WolfHoleResult } from '../components/scorecard/WolfHoleResult';
 import { BestBallRow } from '../components/scorecard/BestBallRow';
 import { ScrambleInput } from '../components/scorecard/ScrambleInput';
-import { withComputedPoints, isWolfHole } from '../lib/scoring/wolf';
+import {
+  withComputedPoints,
+  isWolfHole,
+  computeCarryForHole,
+  totalWolfPoints,
+} from '../lib/scoring/wolf';
 import { computeBestScore, isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
 
@@ -20,12 +25,14 @@ const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
 export function Scorecard() {
   const { roundId } = useParams<{ roundId: string }>();
   const navigate = useNavigate();
-  const { group } = useContext(AuthContext);
+  const { group, updateGroupName } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
   const [currentHole, setCurrentHole] = useState(0);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   const players = group?.players ?? [];
   const { holes, loading, saving, saveHole, setLocalHole } = useGroup(
@@ -84,15 +91,35 @@ export function Scorecard() {
   const hole = holes[currentHole];
   const lockedHoles = holes.map((h) => h?.locked ?? false);
 
+  // Wolf carry + running points
+  const wolfHoles = round.format === 'wolf' ? (holes as WolfHoleScore[]) : [];
+  const currentCarry = round.format === 'wolf' ? computeCarryForHole(wolfHoles, currentHole) : 0;
+  const runningPoints = round.format === 'wolf'
+    ? players.map((p) => ({
+        playerId: p.id,
+        pts: totalWolfPoints(wolfHoles.filter((h) => h.locked), p.id),
+      }))
+    : [];
+
   const handleLockHole = async () => {
     if (!hole) return;
     let locked = { ...hole, locked: true };
 
     if (isWolfHole(locked)) {
-      locked = withComputedPoints(locked as WolfHoleScore, players);
+      // Default unset (0) scores to par before computing points
+      const wolfLocked = locked as WolfHoleScore;
+      const scores = wolfLocked.scores.map((s) =>
+        s.gross <= 0 ? { ...s, gross: par } : s,
+      );
+      locked = withComputedPoints({ ...wolfLocked, scores }, players, currentCarry);
     } else if (isBestBallHole(locked)) {
       const bb = locked as BestBallHoleScore;
-      locked = { ...bb, bestScore: computeBestScore(bb.scores) ?? bb.bestScore };
+      // Default unset scores to par
+      const scores = bb.scores.map((s) => s.gross <= 0 ? { ...s, gross: par } : s);
+      locked = { ...bb, scores, bestScore: computeBestScore(scores) ?? bb.bestScore };
+    } else if (isScrambleHole(locked)) {
+      const sc = locked as ScrambleHoleScore;
+      if (sc.teamScore === null) locked = { ...sc, teamScore: par };
     }
 
     await saveHole(currentHole, locked);
@@ -124,6 +151,12 @@ export function Scorecard() {
     setLocalHole(currentHole, { ...(hole as ScrambleHoleScore), teamScore });
   };
 
+  const handleEditNameSave = async () => {
+    const trimmed = nameInput.trim();
+    if (trimmed) await updateGroupName(trimmed);
+    setEditingName(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Offline banner */}
@@ -138,6 +171,10 @@ export function Scorecard() {
         par={par}
         groupName={group.name}
         roundName={round.name}
+        onEditGroupName={() => {
+          setNameInput(group.name);
+          setEditingName(true);
+        }}
       />
 
       <HoleNav
@@ -169,6 +206,8 @@ export function Scorecard() {
               par={par}
               holeIndex={currentHole}
               disabled={hole.locked}
+              carry={currentCarry}
+              runningPoints={runningPoints}
               onChange={handleWolfChange}
             />
             {hole.locked && <div className="mt-3"><WolfHoleResult hole={hole as WolfHoleScore} players={players} /></div>}
@@ -231,7 +270,7 @@ export function Scorecard() {
           <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
             <h3 className="text-xl font-bold text-white mb-2">Lock Hole {currentHole + 1}?</h3>
             <p className="text-gray-400 text-sm mb-6">
-              Scores will be saved and submitted. You can unlock from the scorecard if needed.
+              Scores will be saved. Any unset scores default to par. You can unlock if needed.
             </p>
             <div className="flex gap-3">
               <button
@@ -245,6 +284,37 @@ export function Scorecard() {
                 className="flex-1 h-14 rounded-xl bg-green-600 text-white font-bold"
               >
                 Lock It
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Group name edit modal */}
+      {editingName && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-6">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
+            <h3 className="text-xl font-bold text-white mb-4">Edit Group Name</h3>
+            <input
+              className="w-full bg-gray-700 rounded-xl px-3 py-3 text-white placeholder-gray-500 mb-4"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleEditNameSave()}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onPointerDown={() => setEditingName(false)}
+                className="flex-1 h-12 rounded-xl bg-gray-700 text-gray-300 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onPointerDown={handleEditNameSave}
+                disabled={!nameInput.trim()}
+                className="flex-1 h-12 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
+              >
+                Save
               </button>
             </div>
           </div>

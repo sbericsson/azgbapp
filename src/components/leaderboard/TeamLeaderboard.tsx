@@ -5,9 +5,10 @@ import type { RoundFormat } from '../../types/tournament';
 interface TeamLeaderboardProps {
   entries: LeaderboardEntry[];
   format: RoundFormat;
+  onGroupClick?: (groupId: string) => void;
 }
 
-export function TeamLeaderboard({ entries, format }: TeamLeaderboardProps) {
+export function TeamLeaderboard({ entries, format, onGroupClick }: TeamLeaderboardProps) {
   return (
     <div className="flex flex-col gap-2">
       {entries.map((entry, i) => (
@@ -16,6 +17,7 @@ export function TeamLeaderboard({ entries, format }: TeamLeaderboardProps) {
           entry={entry}
           rank={i + 1}
           format={format}
+          onClick={onGroupClick ? () => onGroupClick(entry.groupId) : undefined}
         />
       ))}
     </div>

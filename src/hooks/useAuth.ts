@@ -5,7 +5,7 @@ import {
   useEffect,
   useCallback,
 } from 'react';
-import { getGroupByPin, getTournament, getGroupById } from '../lib/firestore';
+import { getGroupByPin, getTournament, getGroupById, updateGroup } from '../lib/firestore';
 import type { Group, Tournament } from '../types/tournament';
 
 interface AuthState {
@@ -20,6 +20,7 @@ interface AuthContextValue extends AuthState {
   loginAsGroup: (tournamentId: string, pin: string) => Promise<boolean>;
   loginAsAdmin: (tournamentId: string, pin: string) => Promise<boolean>;
   logout: () => void;
+  updateGroupName: (newName: string) => Promise<void>;
 }
 
 const SESSION_KEY = 'azgb_session';
@@ -39,6 +40,7 @@ export const AuthContext = createContext<AuthContextValue>({
   loginAsGroup: async () => false,
   loginAsAdmin: async () => false,
   logout: () => {},
+  updateGroupName: async () => {},
 });
 
 export function useAuth() {
@@ -143,5 +145,17 @@ export function useAuthProvider(): AuthContextValue {
     });
   }, []);
 
-  return { ...state, loginAsGroup, loginAsAdmin, logout };
+  const updateGroupName = useCallback(
+    async (newName: string) => {
+      if (!state.group || !state.tournamentId) return;
+      await updateGroup(state.tournamentId, state.group.id, { name: newName });
+      setState((prev) => ({
+        ...prev,
+        group: prev.group ? { ...prev.group, name: newName } : null,
+      }));
+    },
+    [state.group, state.tournamentId],
+  );
+
+  return { ...state, loginAsGroup, loginAsAdmin, logout, updateGroupName };
 }

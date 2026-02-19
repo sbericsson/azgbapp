@@ -123,6 +123,17 @@ export async function listGroupsByRound(
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Group);
 }
 
+export function subscribeGroupsByRound(
+  tournamentId: string,
+  roundId: string,
+  callback: (groups: Group[]) => void,
+): Unsubscribe {
+  const q = query(groupsRef(tournamentId), where('roundId', '==', roundId));
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Group));
+  });
+}
+
 export async function getGroupById(
   tournamentId: string,
   groupId: string,

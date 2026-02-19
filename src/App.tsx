@@ -6,6 +6,7 @@ import { Admin } from './pages/Admin';
 import { Home } from './pages/Home';
 import { Scorecard } from './pages/Scorecard';
 import { Leaderboard } from './pages/Leaderboard';
+import { PublicScorecard } from './pages/PublicScorecard';
 
 function Spinner() {
   return (
@@ -43,6 +44,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<RootRoute />} />
       <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
+      <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
       <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
       <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -10,10 +10,11 @@ interface WolfHoleResultProps {
 export function WolfHoleResult({ hole, players }: WolfHoleResultProps) {
   if (!hole.locked || hole.points.length === 0) return null;
   const description = wolfHoleResultDescription(hole, players);
+  const isTied = hole.points.every((p) => p.pts === 0);
 
   return (
     <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-      <p className="text-green-300 font-semibold text-sm mb-3">{description}</p>
+      <p className={`font-semibold text-sm mb-3 ${isTied ? 'text-amber-300' : 'text-green-300'}`}>{description}</p>
       <div className="grid grid-cols-2 gap-2">
         {players.map((p) => {
           const pts = hole.points.find((pt) => pt.playerId === p.id)?.pts ?? 0;

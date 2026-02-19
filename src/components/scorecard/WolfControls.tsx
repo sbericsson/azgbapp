@@ -10,10 +10,12 @@ interface WolfControlsProps {
   par: number;
   holeIndex: number;
   disabled: boolean;
+  carry: number;
+  runningPoints?: { playerId: string; pts: number }[];
   onChange: (updated: WolfHoleScore) => void;
 }
 
-export function WolfControls({ hole, players, par, holeIndex, disabled, onChange }: WolfControlsProps) {
+export function WolfControls({ hole, players, par, holeIndex, disabled, carry, runningPoints, onChange }: WolfControlsProps) {
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const wolfPlayer = getWolfPlayer(players, holeIndex);
   const partner = players.find((p) => p.id === hole.partnerId);
@@ -29,7 +31,7 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, onChange
       : 'No mode chosen';
 
   function update(patch: Partial<WolfHoleScore>) {
-    onChange(withComputedPoints({ ...hole, ...patch }, players));
+    onChange(withComputedPoints({ ...hole, ...patch }, players, carry));
   }
 
   function handleScoreChange(playerId: string, gross: number) {
@@ -42,6 +44,13 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, onChange
   return (
     <>
       <div className={`space-y-4 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>
+        {/* Carry banner */}
+        {carry > 0 && (
+          <div className="bg-amber-900/30 border border-amber-600/40 rounded-xl px-4 py-2 flex items-center gap-2">
+            <span className="text-amber-400 text-sm font-semibold">🔄 {carry} pts carrying over to this hole</span>
+          </div>
+        )}
+
         {/* Wolf mode controls */}
         <div className="bg-yellow-900/30 border border-yellow-600/40 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -77,18 +86,24 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, onChange
           </div>
         </div>
 
-        {/* Score inputs */}
-        {players.map((p) => (
-          <ScoreInput
-            key={p.id}
-            playerId={p.id}
-            playerName={p.name + (p.id === wolfPlayer.id ? ' 🐺' : '')}
-            value={hole.scores.find((s) => s.playerId === p.id)?.gross ?? 0}
-            par={par}
-            onChange={handleScoreChange}
-            disabled={disabled}
-          />
-        ))}
+        {/* Score inputs with running pts */}
+        {players.map((p) => {
+          const rpts = runningPoints?.find((r) => r.playerId === p.id)?.pts ?? 0;
+          const label = p.name
+            + (p.id === wolfPlayer.id ? ' 🐺' : '')
+            + (rpts > 0 ? ` · ${rpts}pts` : '');
+          return (
+            <ScoreInput
+              key={p.id}
+              playerId={p.id}
+              playerName={label}
+              value={hole.scores.find((s) => s.playerId === p.id)?.gross ?? 0}
+              par={par}
+              onChange={handleScoreChange}
+              disabled={disabled}
+            />
+          );
+        })}
       </div>
 
       {/* Full-screen partner picker modal */}

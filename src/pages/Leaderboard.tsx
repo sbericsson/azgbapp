@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { listRounds, listGroupsByRound } from '../lib/firestore';
+import { listRounds, subscribeGroupsByRound } from '../lib/firestore';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import type { Round, Group } from '../types/tournament';
 import { WolfLeaderboard } from '../components/leaderboard/WolfLeaderboard';
@@ -17,17 +17,25 @@ export function Leaderboard() {
   const [round, setRound] = useState<Round | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
 
+  // Load round once
   useEffect(() => {
     if (!roundId) return;
-    Promise.all([listRounds(TOURNAMENT_ID), listGroupsByRound(TOURNAMENT_ID, roundId)]).then(
-      ([rounds, grps]) => {
-        setRound(rounds.find((r) => r.id === roundId) ?? null);
-        setGroups(grps);
-      },
-    );
+    listRounds(TOURNAMENT_ID).then((all) => {
+      setRound(all.find((r) => r.id === roundId) ?? null);
+    });
+  }, [roundId]);
+
+  // Subscribe to groups for real-time name updates
+  useEffect(() => {
+    if (!roundId) return;
+    return subscribeGroupsByRound(TOURNAMENT_ID, roundId, setGroups);
   }, [roundId]);
 
   const { entries, loading } = useLeaderboard(TOURNAMENT_ID, round, groups);
+
+  const handleGroupClick = (groupId: string) => {
+    if (roundId) navigate(`/scorecard/${roundId}/${groupId}`);
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -57,14 +65,18 @@ export function Leaderboard() {
           </div>
         )}
 
+        {!loading && entries.length > 0 && (
+          <p className="text-gray-500 text-xs mb-3">Tap a group to view their scorecard</p>
+        )}
+
         {!loading && round?.format === 'wolf' && (
-          <WolfLeaderboard entries={entries} />
+          <WolfLeaderboard entries={entries} onGroupClick={handleGroupClick} />
         )}
         {!loading && round?.format === 'bestBall' && (
-          <TeamLeaderboard entries={entries} format="bestBall" />
+          <TeamLeaderboard entries={entries} format="bestBall" onGroupClick={handleGroupClick} />
         )}
         {!loading && round?.format === 'scramble' && (
-          <TeamLeaderboard entries={entries} format="scramble" />
+          <TeamLeaderboard entries={entries} format="scramble" onGroupClick={handleGroupClick} />
         )}
 
         {/* Wolf format also shows per-player totals across groups */}

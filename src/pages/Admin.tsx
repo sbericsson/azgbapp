@@ -12,8 +12,12 @@ import { nanoid } from '../lib/nanoid';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
 
-function randomPin() {
-  return String(Math.floor(1000 + Math.random() * 9000));
+function randomPin(excludePin?: string) {
+  let pin: string;
+  do {
+    pin = String(Math.floor(1000 + Math.random() * 9000));
+  } while (pin === excludePin);
+  return pin;
 }
 
 function cyclePar(val: number) {
@@ -255,7 +259,7 @@ export function Admin() {
     setEditingGroupId(null);
     setAddingGroupToRound(roundId);
     setGName('');
-    setGPin(randomPin());
+    setGPin(randomPin(tournament?.adminPin));
     setGPlayers(['', '', '', '']);
   };
 
@@ -412,12 +416,6 @@ export function Admin() {
           Logout
         </button>
       </header>
-
-      <datalist id="golfer-roster">
-        {availableGolfers.map((g) => (
-          <option key={g.id} value={g.name} />
-        ))}
-      </datalist>
 
       <div className="p-4 max-w-lg mx-auto flex flex-col gap-4">
 
@@ -778,20 +776,31 @@ export function Admin() {
                           </button>
                         </div>
                         <p className="text-gray-400 text-xs">Players (up to 4):</p>
-                        {gPlayers.map((name, i) => (
-                          <input
-                            key={i}
-                            list="golfer-roster"
-                            className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                            placeholder={`Player ${i + 1}`}
-                            value={name}
-                            onChange={(e) => {
-                              const next = [...gPlayers];
-                              next[i] = e.target.value;
-                              setGPlayers(next);
-                            }}
-                          />
-                        ))}
+                        {gPlayers.map((name, i) => {
+                          const otherNames = new Set(
+                            gPlayers.filter((_, j) => j !== i).map((n) => n.trim()).filter(Boolean),
+                          );
+                          const slotGolfers = availableGolfers.filter((g) => !otherNames.has(g.name));
+                          const listId = `edit-slot-${i}`;
+                          return (
+                            <div key={i}>
+                              <datalist id={listId}>
+                                {slotGolfers.map((g) => <option key={g.id} value={g.name} />)}
+                              </datalist>
+                              <input
+                                list={listId}
+                                className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                                placeholder={`Player ${i + 1}`}
+                                value={name}
+                                onChange={(e) => {
+                                  const next = [...gPlayers];
+                                  next[i] = e.target.value;
+                                  setGPlayers(next);
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
                         <div className="flex gap-2 mt-1">
                           <button
                             onPointerDown={() => saveEdit(r.id, g)}
@@ -863,20 +872,31 @@ export function Admin() {
                         </button>
                       </div>
                       <p className="text-gray-400 text-xs">Players (up to 4):</p>
-                      {gPlayers.map((name, i) => (
-                        <input
-                          key={i}
-                          list="golfer-roster"
-                          className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                          placeholder={`Player ${i + 1}`}
-                          value={name}
-                          onChange={(e) => {
-                            const next = [...gPlayers];
-                            next[i] = e.target.value;
-                            setGPlayers(next);
-                          }}
-                        />
-                      ))}
+                      {gPlayers.map((name, i) => {
+                        const otherNames = new Set(
+                          gPlayers.filter((_, j) => j !== i).map((n) => n.trim()).filter(Boolean),
+                        );
+                        const slotGolfers = availableGolfers.filter((g) => !otherNames.has(g.name));
+                        const listId = `add-slot-${i}`;
+                        return (
+                          <div key={i}>
+                            <datalist id={listId}>
+                              {slotGolfers.map((g) => <option key={g.id} value={g.name} />)}
+                            </datalist>
+                            <input
+                              list={listId}
+                              className="w-full bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                              placeholder={`Player ${i + 1}`}
+                              value={name}
+                              onChange={(e) => {
+                                const next = [...gPlayers];
+                                next[i] = e.target.value;
+                                setGPlayers(next);
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
                       <div className="flex gap-2 mt-1">
                         <button
                           onPointerDown={() => savePairing(r.id)}

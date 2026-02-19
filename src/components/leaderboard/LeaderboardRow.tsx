@@ -4,6 +4,7 @@ interface LeaderboardRowProps {
   entry: LeaderboardEntry;
   rank: number;
   format: 'wolf' | 'bestBall' | 'scramble';
+  onClick?: () => void;
 }
 
 function scoreDisplay(score: number, format: string): string {
@@ -19,11 +20,14 @@ function scoreColor(score: number, format: string): string {
   return 'text-blue-400';
 }
 
-export function LeaderboardRow({ entry, rank, format }: LeaderboardRowProps) {
+export function LeaderboardRow({ entry, rank, format, onClick }: LeaderboardRowProps) {
   const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
 
   return (
-    <div className="bg-gray-800 rounded-xl px-4 py-3 flex items-center gap-3">
+    <div
+      className={`bg-gray-800 rounded-xl px-4 py-3 flex items-center gap-3 ${onClick ? 'cursor-pointer active:bg-gray-700' : ''}`}
+      onPointerDown={onClick}
+    >
       <span className="text-xl min-w-[2rem] text-center">{rankBadge}</span>
       <div className="flex-1 min-w-0">
         <p className="text-white font-semibold truncate">{entry.groupName}</p>
