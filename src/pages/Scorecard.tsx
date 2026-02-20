@@ -2,8 +2,9 @@ import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { useGroup } from '../hooks/useGroup';
-import { listRounds, getCourse } from '../lib/firestore';
-import type { Round } from '../types/tournament';
+import { useLeaderboard } from '../hooks/useLeaderboard';
+import { listRounds, getCourse, subscribeGroupsByRound } from '../lib/firestore';
+import type { Round, Group } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
 import { HoleHeader } from '../components/scorecard/HoleHeader';
 import { HoleNav } from '../components/scorecard/HoleNav';
@@ -11,6 +12,7 @@ import { WolfControls } from '../components/scorecard/WolfControls';
 import { WolfHoleResult } from '../components/scorecard/WolfHoleResult';
 import { BestBallRow } from '../components/scorecard/BestBallRow';
 import { ScrambleInput } from '../components/scorecard/ScrambleInput';
+import { HoleFeedbackToast } from '../components/scorecard/HoleFeedbackToast';
 import {
   withComputedPoints,
   isWolfHole,
@@ -19,6 +21,11 @@ import {
 } from '../lib/scoring/wolf';
 import { computeBestScore, isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
+import {
+  generateWolfFeedback,
+  generateBestBallFeedback,
+  generateScrambleFeedback,
+} from '../lib/scoring/feedback';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
 
@@ -34,6 +41,8 @@ export function Scorecard() {
   const [online, setOnline] = useState(navigator.onLine);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
 
   const players = group?.players ?? [];
   const { holes, loading, saving, saveError, saveHole, setLocalHole } = useGroup(
@@ -64,6 +73,20 @@ export function Scorecard() {
       window.removeEventListener('offline', onOffline);
     };
   }, []);
+
+  // Subscribe to all groups in this round (for leaderboard rank — bestBall/scramble only)
+  useEffect(() => {
+    if (!roundId || !round || round.format === 'wolf') return;
+    return subscribeGroupsByRound(TOURNAMENT_ID, roundId, setAllGroups);
+  }, [roundId, round?.id, round?.format]);
+
+  const leaderboardRound = round?.format !== 'wolf' ? round : null;
+  const { entries: lbEntries } = useLeaderboard(TOURNAMENT_ID, leaderboardRound, allGroups);
+
+  const myRank = group && lbEntries.length > 0
+    ? lbEntries.findIndex((e) => e.groupId === group.id) + 1
+    : null;
+  const rankForFeedback = myRank && myRank > 0 ? myRank : null;
 
   // Swipe to navigate holes
   useEffect(() => {
@@ -172,8 +195,26 @@ export function Scorecard() {
     }
 
     await saveHole(currentHole, locked);
+
+    // Generate post-lock commentary
+    let msg: string | null = null;
+    if (isWolfHole(locked)) {
+      msg = generateWolfFeedback(locked as WolfHoleScore, players, par);
+    } else if (isBestBallHole(locked)) {
+      msg = generateBestBallFeedback(
+        locked as BestBallHoleScore, par, rankForFeedback, allGroups.length, currentHole,
+      );
+    } else if (isScrambleHole(locked)) {
+      msg = generateScrambleFeedback(
+        locked as ScrambleHoleScore, par, rankForFeedback, allGroups.length, currentHole,
+      );
+    }
+    setFeedbackMessage(msg);
     setShowLockConfirm(false);
-    if (currentHole < round.holes - 1) setCurrentHole((h) => h + 1);
+    // Delay auto-advance 1.5 s so users can read the toast
+    if (currentHole < round.holes - 1) {
+      setTimeout(() => setCurrentHole((h) => h + 1), 1500);
+    }
   };
 
   const handleUnlockHole = async () => {
@@ -362,6 +403,11 @@ export function Scorecard() {
           </div>
         </div>
       )}
+
+      <HoleFeedbackToast
+        message={feedbackMessage}
+        onDismiss={() => setFeedbackMessage(null)}
+      />
 
       {/* Group name edit modal */}
       {editingName && (
