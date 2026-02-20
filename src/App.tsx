@@ -1,4 +1,4 @@
-import { type ReactElement, useContext } from 'react';
+import { type ReactElement, useContext, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthContext, useAuthProvider } from './hooks/useAuth';
 import { Login } from './pages/Login';
@@ -7,6 +7,7 @@ import { Home } from './pages/Home';
 import { Scorecard } from './pages/Scorecard';
 import { Leaderboard } from './pages/Leaderboard';
 import { PublicScorecard } from './pages/PublicScorecard';
+import { LaunchGate } from './components/LaunchGate';
 
 function Spinner() {
   return (
@@ -39,16 +40,27 @@ function ProtectedAdminRoute({ element }: { element: ReactElement }) {
   return element;
 }
 
+function BypassRoute() {
+  useEffect(() => {
+    localStorage.setItem('azgb_bypass', 'true');
+    window.location.replace('/');
+  }, []);
+  return null;
+}
+
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<RootRoute />} />
-      <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
-      <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
-      <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
-      <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <LaunchGate>
+      <Routes>
+        <Route path="/bypass" element={<BypassRoute />} />
+        <Route path="/" element={<RootRoute />} />
+        <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
+        <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
+        <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
+        <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </LaunchGate>
   );
 }
 
