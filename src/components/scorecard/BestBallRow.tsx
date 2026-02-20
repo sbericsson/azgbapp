@@ -23,11 +23,16 @@ export function BestBallRow({ players, scores, par, disabled, onScoreChange }: B
         const s = scores.find((x) => x.playerId === p.id);
         const gross = s?.gross ?? 0;
         const isBest = gross > 0 && gross === best;
+        const indivDiff = gross > 0 ? gross - par : null;
+        const diffLabel = indivDiff === null ? ''
+          : indivDiff === 0 ? ' · E'
+          : indivDiff > 0 ? ` · +${indivDiff}`
+          : ` · ${indivDiff}`;
         return (
           <div key={p.id} className={`rounded-xl ring-1 transition-all ${isBest ? 'ring-green-500' : 'ring-transparent'}`}>
             <ScoreInput
               playerId={p.id}
-              playerName={p.name + (isBest ? ' ⭐' : '')}
+              playerName={p.name + (isBest ? ' ⭐' : '') + diffLabel}
               value={gross}
               par={par}
               onChange={onScoreChange}

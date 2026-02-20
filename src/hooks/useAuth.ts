@@ -58,7 +58,7 @@ export function useAuthProvider(): AuthContextValue {
 
   // Restore session on mount
   useEffect(() => {
-    const raw = sessionStorage.getItem(SESSION_KEY);
+    const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) {
       setState((s) => ({ ...s, loading: false }));
       return;
@@ -69,7 +69,7 @@ export function useAuthProvider(): AuthContextValue {
         () => null,
       );
       if (!tournament) {
-        sessionStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(SESSION_KEY);
         setState((s) => ({ ...s, loading: false }));
         return;
       }
@@ -110,7 +110,7 @@ export function useAuthProvider(): AuthContextValue {
         groupId: group.id,
         isAdmin: false,
       };
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       setState({ tournamentId, tournament, group, isAdmin: false, loading: false });
       return true;
     },
@@ -127,7 +127,7 @@ export function useAuthProvider(): AuthContextValue {
         groupId: null,
         isAdmin: true,
       };
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       setState({ tournamentId, tournament, group: null, isAdmin: true, loading: false });
       return true;
     },
@@ -135,7 +135,7 @@ export function useAuthProvider(): AuthContextValue {
   );
 
   const logout = useCallback(() => {
-    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
     setState({
       tournamentId: null,
       tournament: null,

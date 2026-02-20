@@ -55,11 +55,12 @@ export function Login() {
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="text-6xl mb-3">⛳</div>
-          <h1 className="text-3xl font-bold text-white">AZGB</h1>
-          <p className="text-gray-400 mt-1">Enter your group PIN</p>
+        <div className="flex justify-center mb-6">
+          <div className="bg-white rounded-2xl p-3 shadow-lg">
+            <img src="/azgb-logo.png" alt="AZ Golf Bender" className="w-44 h-auto" />
+          </div>
         </div>
+        <p className="text-gray-400 mt-1 text-center mb-8">Enter your group PIN</p>
 
         {/* PIN display */}
         <div className="flex justify-center gap-3 mb-6">

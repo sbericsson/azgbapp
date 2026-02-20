@@ -12,10 +12,11 @@ interface WolfControlsProps {
   disabled: boolean;
   carry: number;
   runningPoints?: { playerId: string; pts: number }[];
+  runningRelativeToPar?: { playerId: string; relativeToPar: number }[];
   onChange: (updated: WolfHoleScore) => void;
 }
 
-export function WolfControls({ hole, players, par, holeIndex, disabled, carry, runningPoints, onChange }: WolfControlsProps) {
+export function WolfControls({ hole, players, par, holeIndex, disabled, carry, runningPoints, runningRelativeToPar, onChange }: WolfControlsProps) {
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const wolfPlayer = getWolfPlayer(players, holeIndex);
   const partner = players.find((p) => p.id === hole.partnerId);
@@ -89,9 +90,12 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, carry, r
         {/* Score inputs with running pts */}
         {players.map((p) => {
           const rpts = runningPoints?.find((r) => r.playerId === p.id)?.pts ?? 0;
+          const rel = runningRelativeToPar?.find((r) => r.playerId === p.id)?.relativeToPar;
+          const relLabel = rel === undefined ? '' : rel === 0 ? ' · E' : rel > 0 ? ` · +${rel}` : ` · ${rel}`;
           const label = p.name
             + (p.id === wolfPlayer.id ? ' 🐺' : '')
-            + (rpts > 0 ? ` · ${rpts}pts` : '');
+            + (rpts > 0 ? ` · ${rpts}pts` : '')
+            + relLabel;
           return (
             <ScoreInput
               key={p.id}

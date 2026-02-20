@@ -3,6 +3,8 @@ interface ScrambleInputProps {
   par: number;
   onChange: (val: number) => void;
   disabled?: boolean;
+  cumulativeScore?: number | null;
+  holesLocked?: number;
 }
 
 const MAX_SCORE = 12;
@@ -17,7 +19,7 @@ function scoreColor(score: number, par: number): string {
   return 'text-blue-500';
 }
 
-export function ScrambleInput({ value, par, onChange, disabled }: ScrambleInputProps) {
+export function ScrambleInput({ value, par, onChange, disabled, cumulativeScore, holesLocked }: ScrambleInputProps) {
   const display = (value ?? 0) > 0 ? (value ?? 0) : par;
   const isDefault = !value || value <= 0;
 
@@ -31,6 +33,13 @@ export function ScrambleInput({ value, par, onChange, disabled }: ScrambleInputP
   };
 
   return (
+    <>
+    {cumulativeScore !== null && cumulativeScore !== undefined && holesLocked !== undefined && holesLocked > 0 && (
+      <div className="text-center text-sm text-gray-400 mb-2">
+        Team: {cumulativeScore === 0 ? 'E' : cumulativeScore > 0 ? `+${cumulativeScore}` : `${cumulativeScore}`}
+        {' '}thru {holesLocked}
+      </div>
+    )}
     <div className={`flex items-center justify-between py-3 px-4 rounded-xl bg-gray-800 ${disabled ? 'opacity-50' : ''}`}>
       <span className="text-white font-medium text-base flex-1">Team Score</span>
       <div className="flex items-center gap-3">
@@ -55,5 +64,6 @@ export function ScrambleInput({ value, par, onChange, disabled }: ScrambleInputP
         </button>
       </div>
     </div>
+    </>
   );
 }

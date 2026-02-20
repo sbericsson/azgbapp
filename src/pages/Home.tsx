@@ -21,7 +21,7 @@ const formatLabel: Record<string, string> = {
 };
 
 export function Home() {
-  const { group, tournament, logout } = useContext(AuthContext);
+  const { group, logout } = useContext(AuthContext);
   const navigate = useNavigate();
   const [rounds, setRounds] = useState<Round[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,8 +49,8 @@ export function Home() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <header className="bg-gray-900 px-4 py-4 flex items-center justify-between border-b border-gray-700">
-        <div>
-          <h1 className="text-xl font-bold">⛳ {tournament?.name ?? 'AZGB'}</h1>
+        <div className="flex items-center gap-3">
+          <img src="/azgb-logo.png" alt="AZGB" className="h-10 w-auto bg-white rounded-lg p-0.5" />
           {group && <p className="text-green-400 text-sm font-medium">{group.name}</p>}
         </div>
         <button onPointerDown={logout} className="text-gray-400 text-sm">

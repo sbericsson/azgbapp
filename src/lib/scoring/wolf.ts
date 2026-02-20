@@ -186,41 +186,42 @@ export function wolfHoleResultDescription(
   const wolf = players.find((p) => p.id === hole.wolfPlayerId);
   if (!wolf) return '';
 
-  const carryBonus = hole.carry > 0 ? ` (+${hole.carry} carry)` : '';
+  const carry = hole.carry ?? 0;
+  const carryBonus = carry > 0 ? ` (+${carry} carry)` : '';
 
   // All-zero points → tied → carry rolls over to next hole
   const isTied = hole.points.length > 0 && hole.points.every((p) => p.pts === 0);
   if (isTied) {
     // Always 1 pt base carries — lone wolf bonus does not carry
-    return `Tie — ${hole.carry + WOLF_PARTNER_WIN_EACH} pts carry to next hole`;
+    return `Tie — ${carry + WOLF_PARTNER_WIN_EACH} pts carry to next hole`;
   }
 
   if (hole.loneWolfType === 'pre') {
     const wolfWon = (hole.points.find((p) => p.playerId === hole.wolfPlayerId)?.pts ?? 0) > 0;
     return wolfWon
-      ? `${wolf.name} went Lone Wolf (pre) and WON! +${WOLF_LONE_PRE_WIN + hole.carry} pts${carryBonus}`
-      : `${wolf.name} went Lone Wolf (pre) and lost. Others +${WOLF_LONE_LOSE_EACH + hole.carry} each${carryBonus}`;
+      ? `${wolf.name} went Lone Wolf (pre) and WON! +${WOLF_LONE_PRE_WIN + carry} pts${carryBonus}`
+      : `${wolf.name} went Lone Wolf (pre) and lost. Others +${WOLF_LONE_LOSE_EACH + carry} each${carryBonus}`;
   }
   if (hole.loneWolfType === 'post') {
     const wolfWon = (hole.points.find((p) => p.playerId === hole.wolfPlayerId)?.pts ?? 0) > 0;
     return wolfWon
-      ? `${wolf.name} went Lone Wolf (post) and WON! +${WOLF_LONE_POST_WIN + hole.carry} pts${carryBonus}`
-      : `${wolf.name} went Lone Wolf (post) and lost. Others +${WOLF_LONE_LOSE_EACH + hole.carry} each${carryBonus}`;
+      ? `${wolf.name} went Lone Wolf (post) and WON! +${WOLF_LONE_POST_WIN + carry} pts${carryBonus}`
+      : `${wolf.name} went Lone Wolf (post) and lost. Others +${WOLF_LONE_LOSE_EACH + carry} each${carryBonus}`;
   }
   if (hole.partnerId) {
     const partner = players.find((p) => p.id === hole.partnerId);
     const wolfPts = hole.points.find((p) => p.playerId === hole.wolfPlayerId)?.pts ?? 0;
     if (wolfPts > 0) {
-      return `${wolf.name} & ${partner?.name} WON! Each +${WOLF_PARTNER_WIN_EACH + hole.carry} pt${carryBonus}`;
+      return `${wolf.name} & ${partner?.name} WON! Each +${WOLF_PARTNER_WIN_EACH + carry} pt${carryBonus}`;
     }
     const opponents = players.filter(
       (p) => p.id !== hole.wolfPlayerId && p.id !== hole.partnerId,
     );
     const oppPts = hole.points.find((p) => p.playerId === opponents[0]?.id)?.pts ?? 0;
     if (oppPts > 0) {
-      return `Opponents beat ${wolf.name} & ${partner?.name}. Each +${WOLF_PARTNER_WIN_EACH + hole.carry} pt${carryBonus}`;
+      return `Opponents beat ${wolf.name} & ${partner?.name}. Each +${WOLF_PARTNER_WIN_EACH + carry} pt${carryBonus}`;
     }
-    return `Tie — ${hole.carry + WOLF_PARTNER_WIN_EACH} pts carry to next hole`;
+    return `Tie — ${carry + WOLF_PARTNER_WIN_EACH} pts carry to next hole`;
   }
   return 'Awaiting wolf decision';
 }

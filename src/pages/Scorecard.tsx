@@ -100,6 +100,27 @@ export function Scorecard() {
         pts: totalWolfPoints(wolfHoles.filter((h) => h.locked), p.id),
       }))
     : [];
+  const runningRelativeToPar = round.format === 'wolf'
+    ? players.map((p) => ({
+        playerId: p.id,
+        relativeToPar: (holes as WolfHoleScore[]).reduce((sum, hole, i) => {
+          if (!hole.locked) return sum;
+          const s = hole.scores.find((sc) => sc.playerId === p.id);
+          return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
+        }, 0),
+      }))
+    : [];
+
+  // Scramble cumulative
+  const scrambleCumulative = round.format === 'scramble'
+    ? (holes as ScrambleHoleScore[]).reduce((sum, hole, i) => {
+        if (!hole.locked || hole.teamScore === null) return sum;
+        return sum + (hole.teamScore - (round.par[i] ?? 4));
+      }, 0)
+    : null;
+  const scrambleHolesLocked = round.format === 'scramble'
+    ? (holes as ScrambleHoleScore[]).filter((h) => h.locked).length
+    : 0;
 
   const handleLockHole = async () => {
     if (!hole) return;
@@ -208,6 +229,7 @@ export function Scorecard() {
               disabled={hole.locked}
               carry={currentCarry}
               runningPoints={runningPoints}
+              runningRelativeToPar={runningRelativeToPar}
               onChange={handleWolfChange}
             />
             {hole.locked && <div className="mt-3"><WolfHoleResult hole={hole as WolfHoleScore} players={players} /></div>}
@@ -230,6 +252,8 @@ export function Scorecard() {
             par={par}
             disabled={hole.locked}
             onChange={handleScrambleChange}
+            cumulativeScore={scrambleCumulative}
+            holesLocked={scrambleHolesLocked}
           />
         )}
       </div>
