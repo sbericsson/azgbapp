@@ -96,6 +96,13 @@ export function Scorecard() {
   const hole = holes[currentHole];
   const lockedHoles = holes.map((h) => h?.locked ?? false);
 
+  // Wolf holes require a mode (lone wolf or partner) before locking
+  const canLock = !(
+    hole && isWolfHole(hole) &&
+    (hole as WolfHoleScore).loneWolfType === null &&
+    (hole as WolfHoleScore).partnerId === null
+  );
+
   // Wolf carry + running points
   const wolfHoles = round.format === 'wolf' ? (holes as WolfHoleScore[]) : [];
   const currentCarry = round.format === 'wolf' ? computeCarryForHole(wolfHoles, currentHole) : 0;
@@ -308,7 +315,7 @@ export function Scorecard() {
         ) : !hole?.locked ? (
           <button
             onPointerDown={() => setShowLockConfirm(true)}
-            disabled={saving}
+            disabled={saving || !canLock}
             className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
           >
             {saving ? 'Saving…' : 'Save & Lock 🔒'}
