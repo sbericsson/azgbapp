@@ -8,9 +8,10 @@ interface BestBallRowProps {
   par: number;
   disabled: boolean;
   onScoreChange: (playerId: string, gross: number) => void;
+  runningRelativeToPar?: { playerId: string; relativeToPar: number }[];
 }
 
-export function BestBallRow({ players, scores, par, disabled, onScoreChange }: BestBallRowProps) {
+export function BestBallRow({ players, scores, par, disabled, onScoreChange, runningRelativeToPar }: BestBallRowProps) {
   const validScores = scores.filter((s) => s.gross > 0);
   const best = validScores.length === players.length
     ? Math.min(...validScores.map((s) => s.gross))
@@ -23,11 +24,11 @@ export function BestBallRow({ players, scores, par, disabled, onScoreChange }: B
         const s = scores.find((x) => x.playerId === p.id);
         const gross = s?.gross ?? 0;
         const isBest = gross > 0 && gross === best;
-        const indivDiff = gross > 0 ? gross - par : null;
-        const diffLabel = indivDiff === null ? ''
-          : indivDiff === 0 ? ' · E'
-          : indivDiff > 0 ? ` · +${indivDiff}`
-          : ` · ${indivDiff}`;
+        const cumRel = runningRelativeToPar?.find((r) => r.playerId === p.id)?.relativeToPar;
+        const diffLabel = cumRel === undefined ? ''
+          : cumRel === 0 ? ' · E'
+          : cumRel > 0 ? ` · +${cumRel}`
+          : ` · ${cumRel}`;
         return (
           <div key={p.id} className={`rounded-xl ring-1 transition-all ${isBest ? 'ring-green-500' : 'ring-transparent'}`}>
             <ScoreInput

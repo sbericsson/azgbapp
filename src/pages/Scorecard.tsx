@@ -111,6 +111,18 @@ export function Scorecard() {
       }))
     : [];
 
+  // Best ball cumulative running total per player
+  const bestBallRunningRelativeToPar = round.format === 'bestBall'
+    ? players.map((p) => ({
+        playerId: p.id,
+        relativeToPar: (holes as BestBallHoleScore[]).reduce((sum, hole, i) => {
+          if (!hole.locked) return sum;
+          const s = hole.scores.find((sc) => sc.playerId === p.id);
+          return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
+        }, 0),
+      }))
+    : [];
+
   // Scramble cumulative
   const scrambleCumulative = round.format === 'scramble'
     ? (holes as ScrambleHoleScore[]).reduce((sum, hole, i) => {
@@ -243,6 +255,7 @@ export function Scorecard() {
             par={par}
             disabled={hole.locked}
             onScoreChange={handleBestBallScoreChange}
+            runningRelativeToPar={bestBallRunningRelativeToPar}
           />
         )}
 
