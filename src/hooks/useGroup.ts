@@ -12,6 +12,7 @@ interface UseGroupReturn {
   holes: HoleScore[];
   loading: boolean;
   saving: boolean;
+  saveError: boolean;
   saveHole: (holeIndex: number, hole: HoleScore) => Promise<void>;
   setLocalHole: (holeIndex: number, hole: HoleScore) => void;
 }
@@ -39,6 +40,7 @@ export function useGroup(
   const [holes, setHoles] = useState<HoleScore[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   // Always up-to-date reference to holes — avoids stale closure in saveHole
   const holesRef = useRef<HoleScore[]>([]);
@@ -109,8 +111,10 @@ export function useGroup(
       setSaving(true);
       try {
         await saveGroupScores(tournamentId, round.id, groupId, next);
+        setSaveError(false);
       } catch (err) {
         console.error('saveHole error', err);
+        setSaveError(true);
       } finally {
         setSaving(false);
       }
@@ -118,5 +122,5 @@ export function useGroup(
     [tournamentId, round, groupId],
   );
 
-  return { scoreDoc, holes, loading, saving, saveHole, setLocalHole };
+  return { scoreDoc, holes, loading, saving, saveError, saveHole, setLocalHole };
 }

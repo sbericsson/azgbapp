@@ -36,7 +36,7 @@ export function Scorecard() {
   const [nameInput, setNameInput] = useState('');
 
   const players = group?.players ?? [];
-  const { holes, loading, saving, saveHole, setLocalHole } = useGroup(
+  const { holes, loading, saving, saveError, saveHole, setLocalHole } = useGroup(
     TOURNAMENT_ID,
     round,
     group?.id ?? null,
@@ -201,6 +201,13 @@ export function Scorecard() {
       {!online && (
         <div className="bg-yellow-900 text-yellow-200 text-xs text-center py-2 px-4">
           Offline — scores will sync when you reconnect
+        </div>
+      )}
+
+      {/* Save error banner */}
+      {saveError && (
+        <div className="bg-red-900 text-red-200 text-xs text-center py-2 px-4">
+          Save failed — check connection and try locking again
         </div>
       )}
 

@@ -156,6 +156,9 @@ export function Admin() {
   const [gPlayers, setGPlayers] = useState(['', '', '', '']);
   const [gSaving, setGSaving] = useState(false);
 
+  // Status-change confirmation
+  const [pendingStatusRound, setPendingStatusRound] = useState<Round | null>(null);
+
   useEffect(() => {
     listGolfers(TOURNAMENT_ID).then((gs) =>
       setGolfers(gs.sort((a, b) => a.name.localeCompare(b.name))),
@@ -778,7 +781,7 @@ export function Admin() {
                   </button>
                   <div className="flex items-center gap-2 ml-2">
                     <button
-                      onPointerDown={() => toggleRoundStatus(r)}
+                      onPointerDown={() => setPendingStatusRound(r)}
                       className={`text-xs px-3 py-1.5 rounded-lg font-semibold
                         ${r.status === 'active' ? 'bg-green-700 text-white' :
                           r.status === 'complete' ? 'bg-gray-600 text-gray-300' :
@@ -1003,6 +1006,43 @@ export function Admin() {
           );
         })}
       </div>
+
+      {/* Round status confirmation modal */}
+      {pendingStatusRound && (() => {
+        const r = pendingStatusRound;
+        const nextStatus = r.status === 'pending' ? 'active' : r.status === 'active' ? 'complete' : 'pending';
+        const isDestructive = r.status === 'active';
+        const message =
+          r.status === 'pending'
+            ? `Start "${r.name}"? Players will be able to enter scores.`
+            : r.status === 'active'
+              ? `Mark "${r.name}" as complete? Players will lose editing access.`
+              : `Reset "${r.name}" to pending? It will be hidden from players.`;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
+            <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
+              <p className={`text-sm leading-relaxed ${isDestructive ? 'text-red-300' : 'text-gray-200'}`}>
+                {message}
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onPointerDown={() => setPendingStatusRound(null)}
+                  className="flex-1 h-10 bg-gray-600 rounded-xl text-sm text-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onPointerDown={() => { toggleRoundStatus(r); setPendingStatusRound(null); }}
+                  className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white
+                    ${isDestructive ? 'bg-red-700' : 'bg-green-700'}`}
+                >
+                  {nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
