@@ -104,34 +104,34 @@ export function Scorecard() {
     ? players.map((p) => ({
         playerId: p.id,
         relativeToPar: (holes as WolfHoleScore[]).reduce((sum, hole, i) => {
-          if (!hole.locked) return sum;
+          if (i > currentHole || !hole.locked) return sum;
           const s = hole.scores.find((sc) => sc.playerId === p.id);
           return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
         }, 0),
       }))
     : [];
 
-  // Best ball cumulative running total per player
+  // Best ball cumulative running total per player through current hole
   const bestBallRunningRelativeToPar = round.format === 'bestBall'
     ? players.map((p) => ({
         playerId: p.id,
         relativeToPar: (holes as BestBallHoleScore[]).reduce((sum, hole, i) => {
-          if (!hole.locked) return sum;
+          if (i > currentHole || !hole.locked) return sum;
           const s = hole.scores.find((sc) => sc.playerId === p.id);
           return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
         }, 0),
       }))
     : [];
 
-  // Scramble cumulative
+  // Scramble cumulative through current hole
   const scrambleCumulative = round.format === 'scramble'
     ? (holes as ScrambleHoleScore[]).reduce((sum, hole, i) => {
-        if (!hole.locked || hole.teamScore === null) return sum;
+        if (i > currentHole || !hole.locked || hole.teamScore === null) return sum;
         return sum + (hole.teamScore - (round.par[i] ?? 4));
       }, 0)
     : null;
   const scrambleHolesLocked = round.format === 'scramble'
-    ? (holes as ScrambleHoleScore[]).filter((h) => h.locked).length
+    ? (holes as ScrambleHoleScore[]).filter((h, i) => h.locked && i <= currentHole).length
     : 0;
 
   const handleLockHole = async () => {
