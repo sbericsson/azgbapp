@@ -148,7 +148,10 @@ export function Scorecard() {
 
   const handleLockHole = async () => {
     if (!hole) return;
-    if (!canLock) return;
+    if (isWolfHole(hole)) {
+      const w = hole as WolfHoleScore;
+      if (w.loneWolfType === null && w.partnerId === null) return;
+    }
     let locked = { ...hole, locked: true };
 
     if (isWolfHole(locked)) {
@@ -314,13 +317,19 @@ export function Scorecard() {
             <span>🏁</span> Round Complete
           </div>
         ) : !hole?.locked ? (
-          <button
-            onPointerDown={() => { if (canLock) setShowLockConfirm(true); }}
-            disabled={saving || !canLock}
-            className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
-          >
-            {saving ? 'Saving…' : 'Save & Lock 🔒'}
-          </button>
+          canLock ? (
+            <button
+              onPointerDown={() => setShowLockConfirm(true)}
+              disabled={saving}
+              className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
+            >
+              {saving ? 'Saving…' : 'Save & Lock 🔒'}
+            </button>
+          ) : (
+            <div className="h-14 px-6 rounded-xl bg-green-600/40 text-white/40 font-bold flex items-center justify-center">
+              Save & Lock 🔒
+            </div>
+          )
         ) : (
           <div className="h-14 px-6 rounded-xl bg-gray-700 text-gray-400 font-medium flex items-center">
             Hole {currentHole + 1} Locked
