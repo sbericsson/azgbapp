@@ -25,6 +25,22 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // Take control immediately on update — no need to close all tabs
+        skipWaiting: true,
+        clientsClaim: true,
+        // Runtime cache for images with 6h TTL so logo/icon updates propagate quickly
+        runtimeCaching: [
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|ico|webp)$/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'images',
+              expiration: {
+                maxAgeSeconds: 6 * 60 * 60,
+              },
+            },
+          },
+        ],
       },
     }),
   ],
