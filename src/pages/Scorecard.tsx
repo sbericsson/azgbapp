@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { useGroup } from '../hooks/useGroup';
@@ -45,6 +45,7 @@ export function Scorecard() {
   const [allGroups, setAllGroups] = useState<Group[]>([]);
 
   const players = group?.players ?? [];
+  const hasJumpedToCurrentHole = useRef(false);
   const { holes, loading, saving, saveError, saveHole, setLocalHole } = useGroup(
     TOURNAMENT_ID,
     round,
@@ -62,6 +63,14 @@ export function Scorecard() {
       }
     });
   }, [roundId]);
+
+  // On first load, jump to the first unlocked hole so returning players land on their active hole
+  useEffect(() => {
+    if (hasJumpedToCurrentHole.current || loading || holes.length === 0) return;
+    hasJumpedToCurrentHole.current = true;
+    const firstUnlocked = holes.findIndex((h) => !h.locked);
+    if (firstUnlocked > 0) setCurrentHole(firstUnlocked);
+  }, [loading, holes]);
 
   useEffect(() => {
     const onOnline = () => setOnline(true);
