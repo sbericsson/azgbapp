@@ -2,7 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { useGroup } from '../hooks/useGroup';
-import { listRounds } from '../lib/firestore';
+import { listRounds, getCourse } from '../lib/firestore';
 import type { Round } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
 import { HoleHeader } from '../components/scorecard/HoleHeader';
@@ -28,6 +28,7 @@ export function Scorecard() {
   const { group, updateGroupName } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
+  const [courseName, setCourseName] = useState<string | undefined>();
   const [currentHole, setCurrentHole] = useState(0);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
@@ -45,8 +46,11 @@ export function Scorecard() {
   useEffect(() => {
     if (!roundId) return;
     listRounds(TOURNAMENT_ID).then((all) => {
-      const r = all.find((r) => r.id === roundId);
-      setRound(r ?? null);
+      const r = all.find((r) => r.id === roundId) ?? null;
+      setRound(r);
+      if (r?.courseId) {
+        getCourse(TOURNAMENT_ID, r.courseId).then((c) => setCourseName(c?.name));
+      }
     });
   }, [roundId]);
 
@@ -204,6 +208,7 @@ export function Scorecard() {
         par={par}
         groupName={group.name}
         roundName={round.name}
+        courseName={courseName}
         onEditGroupName={() => {
           setNameInput(group.name);
           setEditingName(true);

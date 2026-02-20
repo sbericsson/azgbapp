@@ -4,15 +4,18 @@ interface HoleHeaderProps {
   par: number;
   groupName: string;
   roundName: string;
+  courseName?: string;
   onEditGroupName?: () => void;
 }
 
-export function HoleHeader({ holeNumber, par, groupName, roundName, onEditGroupName }: HoleHeaderProps) {
+export function HoleHeader({ holeNumber, par, groupName, roundName, courseName, onEditGroupName }: HoleHeaderProps) {
   return (
     <div className="bg-gray-900 px-4 py-3 border-b border-gray-700">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">{roundName}</p>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">
+            {roundName}{courseName ? ` · ${courseName}` : ''}
+          </p>
           <div className="flex items-center gap-2">
             <p className="text-white font-semibold">{groupName}</p>
             {onEditGroupName && (

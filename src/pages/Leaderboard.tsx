@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { listRounds, subscribeGroupsByRound } from '../lib/firestore';
+import { listRounds, subscribeGroupsByRound, getCourse } from '../lib/firestore';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import type { Round, Group } from '../types/tournament';
 import { WolfLeaderboard } from '../components/leaderboard/WolfLeaderboard';
@@ -16,12 +16,17 @@ export function Leaderboard() {
 
   const [round, setRound] = useState<Round | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [courseName, setCourseName] = useState<string | undefined>();
 
   // Load round once
   useEffect(() => {
     if (!roundId) return;
     listRounds(TOURNAMENT_ID).then((all) => {
-      setRound(all.find((r) => r.id === roundId) ?? null);
+      const r = all.find((r) => r.id === roundId) ?? null;
+      setRound(r);
+      if (r?.courseId) {
+        getCourse(TOURNAMENT_ID, r.courseId).then((c) => setCourseName(c?.name));
+      }
     });
   }, [roundId]);
 
@@ -44,7 +49,9 @@ export function Leaderboard() {
         <div className="flex-1">
           <h1 className="text-lg font-bold">Leaderboard</h1>
           {round && (
-            <p className="text-gray-400 text-sm">{round.name} · {round.format}</p>
+            <p className="text-gray-400 text-sm">
+              {round.name}{courseName ? ` · ${courseName}` : ''}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-1">

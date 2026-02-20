@@ -49,6 +49,12 @@ export async function createCourse(
   await setDoc(doc(db, 'tournaments', tournamentId, 'courses', id), data);
 }
 
+export async function getCourse(tournamentId: string, courseId: string): Promise<Course | null> {
+  const snap = await getDoc(doc(db, 'tournaments', tournamentId, 'courses', courseId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Course;
+}
+
 export async function listCourses(tournamentId: string): Promise<Course[]> {
   const snap = await getDocs(coursesRef(tournamentId));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Course);
