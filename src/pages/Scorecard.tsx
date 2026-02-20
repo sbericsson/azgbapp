@@ -148,6 +148,7 @@ export function Scorecard() {
 
   const handleLockHole = async () => {
     if (!hole) return;
+    if (!canLock) return;
     let locked = { ...hole, locked: true };
 
     if (isWolfHole(locked)) {
@@ -314,7 +315,7 @@ export function Scorecard() {
           </div>
         ) : !hole?.locked ? (
           <button
-            onPointerDown={() => setShowLockConfirm(true)}
+            onPointerDown={() => { if (canLock) setShowLockConfirm(true); }}
             disabled={saving || !canLock}
             className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
           >
