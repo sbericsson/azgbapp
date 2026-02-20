@@ -454,7 +454,7 @@ export function Admin() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gray-950 text-white lg:h-screen lg:flex lg:flex-col lg:overflow-hidden">
       <header className="bg-gray-900 px-4 py-4 flex items-center justify-between border-b border-gray-700">
         <div>
           <h1 className="text-xl font-bold">Admin</h1>
@@ -465,7 +465,11 @@ export function Admin() {
         </button>
       </header>
 
-      <div className="p-4 max-w-lg mx-auto flex flex-col gap-4">
+      <div className="lg:flex-1 lg:overflow-hidden lg:grid lg:grid-cols-[320px_1fr]">
+
+        {/* ── LEFT SIDEBAR: Roster + Courses ── */}
+        <div className="lg:overflow-y-auto lg:border-r lg:border-gray-700">
+          <div className="p-4 max-w-lg mx-auto flex flex-col gap-4 lg:max-w-none lg:mx-0 lg:p-6">
 
         {/* ── Golfer Roster ── */}
         <div className="bg-gray-800 rounded-2xl overflow-hidden">
@@ -479,11 +483,10 @@ export function Admin() {
                 {golfers.length} golfer{golfers.length !== 1 ? 's' : ''} — names auto-complete in pairings
               </p>
             </div>
-            <span className="text-gray-500 text-sm ml-2">{rosterOpen ? '▲' : '▼'}</span>
+            <span className="text-gray-500 text-sm ml-2 lg:hidden">{rosterOpen ? '▲' : '▼'}</span>
           </button>
 
-          {rosterOpen && (
-            <div className="border-t border-gray-700 px-4 pb-4 pt-3 flex flex-col gap-3">
+          <div className={`border-t border-gray-700 px-4 pb-4 pt-3 flex flex-col gap-3 ${rosterOpen ? '' : 'hidden'} lg:block`}>
               <div className="flex gap-2">
                 <input
                   className="flex-1 bg-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm"
@@ -514,8 +517,7 @@ export function Admin() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+          </div>
         </div>
 
         {/* ── Courses ── */}
@@ -530,11 +532,10 @@ export function Admin() {
                 {courses.length} course{courses.length !== 1 ? 's' : ''} — select when creating a round
               </p>
             </div>
-            <span className="text-gray-500 text-sm ml-2">{coursesOpen ? '▲' : '▼'}</span>
+            <span className="text-gray-500 text-sm ml-2 lg:hidden">{coursesOpen ? '▲' : '▼'}</span>
           </button>
 
-          {coursesOpen && (
-            <div className="border-t border-gray-700 px-4 pb-4 pt-3 flex flex-col gap-3">
+          <div className={`border-t border-gray-700 px-4 pb-4 pt-3 flex flex-col gap-3 ${coursesOpen ? '' : 'hidden'} lg:block`}>
               {/* Existing courses */}
               {courses.length === 0 && !addingCourse && (
                 <p className="text-gray-500 text-sm">No courses yet.</p>
@@ -663,8 +664,13 @@ export function Admin() {
                 </button>
               )}
             </div>
-          )}
+          </div>
         </div>
+          </div>
+
+        {/* ── RIGHT MAIN: Add Round + Rounds list ── */}
+        <div className="lg:overflow-y-auto">
+          <div className="p-4 max-w-lg mx-auto flex flex-col gap-4 lg:max-w-none lg:mx-0 lg:p-6">
 
         {/* ── Add Round form ── */}
         <div className="bg-gray-800 rounded-2xl p-4 flex flex-col gap-3">
@@ -1005,6 +1011,8 @@ export function Admin() {
             </div>
           );
         })}
+          </div>
+        </div>
       </div>
 
       {/* Round status confirmation modal */}
