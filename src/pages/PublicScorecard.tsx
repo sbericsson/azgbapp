@@ -67,7 +67,7 @@ export function PublicScorecard() {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <header className="bg-gray-900 px-4 py-4 flex items-center gap-3 border-b border-gray-700">
-        <button onPointerDown={() => navigate(-1)} className="text-gray-400 text-xl">‹</button>
+        <button onPointerDown={() => navigate(`/leaderboard/${roundId}`)} className="text-gray-400 text-xl">‹</button>
         <div className="flex-1">
           <p className="text-xs text-gray-400 uppercase tracking-wide">{round.name}</p>
           <h1 className="text-lg font-bold">{group.name}</h1>
