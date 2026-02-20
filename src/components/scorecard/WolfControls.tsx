@@ -22,6 +22,10 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, carry, r
   const partner = players.find((p) => p.id === hole.partnerId);
   const nonWolfPlayers = players.filter((p) => p.id !== wolfPlayer.id);
 
+  const allScoresEntered = hole.scores.length > 0 && hole.scores.every((s) => s.gross > 0);
+  const noModeSelected = hole.loneWolfType === null && hole.partnerId === null;
+  const showModeReminder = !disabled && allScoresEntered && noModeSelected;
+
   const modeLabel =
     hole.loneWolfType === 'pre'
       ? 'Lone Wolf (Pre) +3'
@@ -66,25 +70,31 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, carry, r
             <button
               onClick={() => update({ loneWolfType: 'pre', partnerId: null })}
               className={`py-3 px-2 rounded-lg text-xs font-bold text-center transition-colors
-                ${hole.loneWolfType === 'pre' ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-200 active:bg-gray-600'}`}
+                ${hole.loneWolfType === 'pre' ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-200 active:bg-gray-600'}
+                ${showModeReminder ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}
             >
               Lone Wolf<br /><span className="font-normal">(Pre) +3</span>
             </button>
             <button
               onClick={() => update({ loneWolfType: 'post', partnerId: null })}
               className={`py-3 px-2 rounded-lg text-xs font-bold text-center transition-colors
-                ${hole.loneWolfType === 'post' ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-200 active:bg-gray-600'}`}
+                ${hole.loneWolfType === 'post' ? 'bg-yellow-500 text-gray-900' : 'bg-gray-700 text-gray-200 active:bg-gray-600'}
+                ${showModeReminder ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}
             >
               Lone Wolf<br /><span className="font-normal">(Post) +2</span>
             </button>
             <button
               onClick={() => setShowPartnerModal(true)}
               className={`py-3 px-2 rounded-lg text-xs font-bold text-center transition-colors
-                ${hole.partnerId && !hole.loneWolfType ? 'bg-green-500 text-gray-900' : 'bg-gray-700 text-gray-200 active:bg-gray-600'}`}
+                ${hole.partnerId && !hole.loneWolfType ? 'bg-green-500 text-gray-900' : 'bg-gray-700 text-gray-200 active:bg-gray-600'}
+                ${showModeReminder ? 'ring-2 ring-amber-400 animate-pulse' : ''}`}
             >
               Pick<br /><span className="font-normal">Partner</span>
             </button>
           </div>
+          {showModeReminder && (
+            <p className="text-amber-400 text-xs text-center mt-2">Wolf must pick a mode to lock.</p>
+          )}
         </div>
 
         {/* Score inputs with running pts */}
