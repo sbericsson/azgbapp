@@ -114,7 +114,7 @@ export function Leaderboard() {
 
       {/* Bottom nav */}
       <div className="bg-gray-900 border-t border-gray-700 p-4 pb-safe">
-        {roundId && group && (
+        {roundId && group && group.roundId === roundId && round?.status !== 'complete' && (
           <button
             onPointerDown={() => navigate(`/scorecard/${roundId}`)}
             className="w-full h-14 rounded-xl bg-green-700 text-white font-bold"

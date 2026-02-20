@@ -30,9 +30,11 @@ export function Home() {
   useEffect(() => {
     Promise.all([listRounds(TOURNAMENT_ID), listCourses(TOURNAMENT_ID)])
       .then(([allRounds, allCourses]) => {
-        const myRounds = allRounds.filter(
-          (r) => r.status !== 'pending' && (!group || group.roundId === r.id),
-        );
+        const myRounds = allRounds.filter((r) => {
+          if (r.status === 'pending') return false;
+          if (r.status === 'complete') return true; // all completed rounds visible to everyone
+          return !group || group.roundId === r.id;  // active: only their assigned round
+        });
         setRounds(myRounds);
         setCourseMap(new Map(allCourses.map((c) => [c.id, c])));
       })
@@ -81,7 +83,11 @@ export function Home() {
                 return (
                 <button
                   key={round.id}
-                  onPointerDown={() => navigate(`/scorecard/${round.id}`)}
+                  onPointerDown={() => navigate(
+                    round.status === 'complete'
+                      ? `/leaderboard/${round.id}`
+                      : `/scorecard/${round.id}`
+                  )}
                   className="w-full bg-gray-800 rounded-2xl px-4 py-4 text-left flex items-center justify-between hover:bg-gray-700 active:bg-gray-700 transition-colors"
                 >
                   <div>

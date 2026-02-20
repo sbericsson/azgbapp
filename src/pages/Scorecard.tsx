@@ -91,6 +91,7 @@ export function Scorecard() {
     );
   }
 
+  const isComplete = round.status === 'complete';
   const par = round.par[currentHole] ?? 4;
   const hole = holes[currentHole];
   const lockedHoles = holes.map((h) => h?.locked ?? false);
@@ -209,7 +210,7 @@ export function Scorecard() {
         groupName={group.name}
         roundName={round.name}
         courseName={courseName}
-        onEditGroupName={() => {
+        onEditGroupName={isComplete ? undefined : () => {
           setNameInput(group.name);
           setEditingName(true);
         }}
@@ -227,12 +228,14 @@ export function Scorecard() {
           <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-4 py-3 mb-3 border border-gray-700">
             <span className="text-lg">🔒</span>
             <span className="text-gray-300 text-sm flex-1">Hole locked</span>
-            <button
-              onPointerDown={handleUnlockHole}
-              className="text-yellow-400 text-sm font-medium"
-            >
-              Unlock
-            </button>
+            {!isComplete && (
+              <button
+                onPointerDown={handleUnlockHole}
+                className="text-yellow-400 text-sm font-medium"
+              >
+                Unlock
+              </button>
+            )}
           </div>
         )}
 
@@ -291,7 +294,11 @@ export function Scorecard() {
           Leaderboard
         </button>
         <div className="flex-1" />
-        {!hole?.locked ? (
+        {isComplete ? (
+          <div className="h-14 px-6 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 font-medium flex items-center gap-2">
+            <span>🏁</span> Round Complete
+          </div>
+        ) : !hole?.locked ? (
           <button
             onPointerDown={() => setShowLockConfirm(true)}
             disabled={saving}
