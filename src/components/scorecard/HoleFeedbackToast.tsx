@@ -17,7 +17,7 @@ export function HoleFeedbackToast({ message, onDismiss }: Props) {
     }
     // Tiny delay so CSS transition fires from the hidden state
     const showTimer = setTimeout(() => setVisible(true), 10);
-    const dismissTimer = setTimeout(() => onDismissRef.current(), 3500);
+    const dismissTimer = setTimeout(() => onDismissRef.current(), 10000);
     return () => {
       clearTimeout(showTimer);
       clearTimeout(dismissTimer);
