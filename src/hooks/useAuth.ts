@@ -25,10 +25,13 @@ interface AuthContextValue extends AuthState {
 
 const SESSION_KEY = 'azgb_session';
 
+const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 interface StoredSession {
   tournamentId: string;
   groupId: string | null;
   isAdmin: boolean;
+  loginAt: number;
 }
 
 export const AuthContext = createContext<AuthContextValue>({
@@ -64,6 +67,11 @@ export function useAuthProvider(): AuthContextValue {
       return;
     }
     const session: StoredSession = JSON.parse(raw);
+    if (!session.loginAt || Date.now() - session.loginAt > SESSION_TTL_MS) {
+      localStorage.removeItem(SESSION_KEY);
+      setState((s) => ({ ...s, loading: false }));
+      return;
+    }
     (async () => {
       const tournament = await getTournament(session.tournamentId).catch(
         () => null,
@@ -109,6 +117,7 @@ export function useAuthProvider(): AuthContextValue {
         tournamentId,
         groupId: group.id,
         isAdmin: false,
+        loginAt: Date.now(),
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       setState({ tournamentId, tournament, group, isAdmin: false, loading: false });
@@ -126,6 +135,7 @@ export function useAuthProvider(): AuthContextValue {
         tournamentId,
         groupId: null,
         isAdmin: true,
+        loginAt: Date.now(),
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
       setState({ tournamentId, tournament, group: null, isAdmin: true, loading: false });
