@@ -2,11 +2,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { subscribeGroupScores, saveGroupScores } from '../lib/firestore';
 import type { GroupScoreDoc, HoleScore } from '../types/scoring';
 import type { Round } from '../types/tournament';
-import { emptyWolfHole } from '../lib/scoring/wolf';
-import { emptyBestBallHole } from '../lib/scoring/bestBall';
-import { emptyScrambleHole } from '../lib/scoring/scramble';
-import { emptyGauntletHole } from '../lib/scoring/gauntlet';
-import type { Player } from '../types/tournament';
+import { emptyWolfHole, isWolfHole } from '../lib/scoring/wolf';
+import { emptyBestBallHole, isBestBallHole } from '../lib/scoring/bestBall';
+import { emptyScrambleHole, isScrambleHole } from '../lib/scoring/scramble';
+import { emptyGauntletHole, isGauntletHole } from '../lib/scoring/gauntlet';
+import type { Player, RoundFormat } from '../types/tournament';
 
 interface UseGroupReturn {
   scoreDoc: GroupScoreDoc | null;
@@ -16,6 +16,17 @@ interface UseGroupReturn {
   saveError: boolean;
   saveHole: (holeIndex: number, hole: HoleScore) => Promise<void>;
   setLocalHole: (holeIndex: number, hole: HoleScore) => void;
+}
+
+function holesMatchFormat(holes: HoleScore[], format: RoundFormat): boolean {
+  if (holes.length === 0) return true;
+  const first = holes[0];
+  switch (format) {
+    case 'wolf':     return isWolfHole(first);
+    case 'bestBall': return isBestBallHole(first);
+    case 'scramble': return isScrambleHole(first);
+    case 'gauntlet': return isGauntletHole(first);
+  }
 }
 
 function buildInitialHoles(round: Round, players: Player[]): HoleScore[] {
@@ -62,7 +73,7 @@ export function useGroup(
       round.id,
       groupId,
       (doc) => {
-        if (doc) {
+        if (doc && holesMatchFormat(doc.holes, round.format)) {
           setScoreDoc(doc);
           // Merge: keep local state for any unlocked holes (user may be entering data),
           // but always accept locked holes from Firestore as the source of truth.
@@ -74,7 +85,7 @@ export function useGroup(
             });
           });
         } else {
-          // No existing doc — initialise with empty holes
+          // No doc, or stale doc from a previous format — build fresh holes.
           const initial = buildInitialHoles(round, players);
           setHoles(initial);
         }
