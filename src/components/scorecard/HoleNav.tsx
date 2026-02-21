@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 
 interface HoleNavProps {
   currentHole: number; // 0-indexed
@@ -7,6 +8,12 @@ interface HoleNavProps {
 }
 
 export function HoleNav({ currentHole, totalHoles, lockedHoles, onHoleChange }: HoleNavProps) {
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [currentHole]);
+
   return (
     <div className="flex gap-1 overflow-x-auto pb-1 px-2 scrollbar-hide">
       {Array.from({ length: totalHoles }, (_, i) => {
@@ -15,6 +22,7 @@ export function HoleNav({ currentHole, totalHoles, lockedHoles, onHoleChange }: 
         return (
           <button
             key={i}
+            ref={isCurrent ? activeRef : undefined}
             onClick={() => onHoleChange(i)}
             className={`min-w-[2.5rem] h-10 rounded-lg text-sm font-bold flex-shrink-0 transition-colors
               ${isCurrent

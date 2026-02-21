@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { WolfHoleScore } from '../../types/scoring';
 import type { Player } from '../../types/tournament';
-import { getWolfPlayer, withComputedPoints } from '../../lib/scoring/wolf';
+import { getWolfPlayer, getTeeOrder, withComputedPoints } from '../../lib/scoring/wolf';
 import { ScoreInput } from './ScoreInput';
 
 interface WolfControlsProps {
@@ -19,6 +19,7 @@ interface WolfControlsProps {
 export function WolfControls({ hole, players, par, holeIndex, disabled, carry, runningPoints, runningRelativeToPar, onChange }: WolfControlsProps) {
   const [showPartnerModal, setShowPartnerModal] = useState(false);
   const wolfPlayer = getWolfPlayer(players, holeIndex);
+  const teeOrder = getTeeOrder(players, holeIndex);
   const partner = players.find((p) => p.id === hole.partnerId);
   const nonWolfPlayers = players.filter((p) => p.id !== wolfPlayer.id);
 
@@ -97,8 +98,8 @@ export function WolfControls({ hole, players, par, holeIndex, disabled, carry, r
           )}
         </div>
 
-        {/* Score inputs with running pts */}
-        {players.map((p) => {
+        {/* Score inputs in tee-off order (wolf last) */}
+        {teeOrder.map((p) => {
           const rpts = runningPoints?.find((r) => r.playerId === p.id)?.pts ?? 0;
           const rel = runningRelativeToPar?.find((r) => r.playerId === p.id)?.relativeToPar;
           const relLabel = rel === undefined ? '' : rel === 0 ? ' · E' : rel > 0 ? ` · +${rel}` : ` · ${rel}`;

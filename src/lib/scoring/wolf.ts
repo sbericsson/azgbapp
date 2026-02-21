@@ -16,6 +16,21 @@ export function getWolfPlayer(players: Player[], holeIndex: number): Player {
 }
 
 /**
+ * Returns players in tee-off order for a given hole, with the Wolf always last.
+ * Each player advances one position per hole, cycling every n holes.
+ * e.g. with players [A,B,C,D]: hole 0 → [D,C,B,A🐺], hole 1 → [A,D,C,B🐺]
+ */
+export function getTeeOrder(players: Player[], holeIndex: number): Player[] {
+  const n = players.length;
+  const wolfIndex = holeIndex % n;
+  const nonWolf = [
+    ...players.slice(wolfIndex + 1),
+    ...players.slice(0, wolfIndex),
+  ].reverse();
+  return [...nonWolf, players[wolfIndex]];
+}
+
+/**
  * How many points the winning side would earn on this hole before carry.
  * Used to compute how much carry rolls over on a tie.
  */

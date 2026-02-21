@@ -83,7 +83,7 @@ export function Home() {
                 return (
                 <button
                   key={round.id}
-                  onPointerDown={() => navigate(
+                  onClick={() => navigate(
                     round.status === 'complete'
                       ? `/leaderboard/${round.id}`
                       : `/scorecard/${round.id}`

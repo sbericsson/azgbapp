@@ -26,7 +26,7 @@ export function LeaderboardRow({ entry, rank, format, onClick }: LeaderboardRowP
   return (
     <div
       className={`bg-gray-800 rounded-xl px-4 py-3 flex items-center gap-3 ${onClick ? 'cursor-pointer active:bg-gray-700' : ''}`}
-      onPointerDown={onClick}
+      onClick={onClick}
     >
       <span className="text-xl min-w-[2rem] text-center">{rankBadge}</span>
       <div className="flex-1 min-w-0">
