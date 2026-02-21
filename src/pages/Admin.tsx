@@ -140,6 +140,7 @@ export function Admin() {
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
   const [addingGroupToRound, setAddingGroupToRound] = useState<string | null>(null);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [copiedGroupId, setCopiedGroupId] = useState<string | null>(null);
 
   // Round form
   const [rName, setRName] = useState('');
@@ -879,48 +880,88 @@ export function Admin() {
                         </div>
                       </div>
                     ) : (
-                      <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            {g.id === winnerGroupId && <span>🥇</span>}
-                            <p className="font-medium text-sm">{g.name}</p>
+                      <div key={g.id} className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              {g.id === winnerGroupId && <span>🥇</span>}
+                              <p className="font-medium text-sm">{g.name}</p>
+                            </div>
+                            <p className="text-gray-400 text-xs">PIN: {g.pin}</p>
+                            <div className="flex flex-col gap-0.5 mt-1">
+                              {g.players.map((p) => {
+                                const ppts = summary?.playerPoints?.find((pp) => pp.playerId === p.id);
+                                return (
+                                  <p key={p.id} className="text-gray-300 text-xs flex items-center justify-between pr-2">
+                                    <span>• {p.name}</span>
+                                    {ppts && ppts.pts > 0 && <span className="text-yellow-400">{ppts.pts}pts</span>}
+                                  </p>
+                                );
+                              })}
+                            </div>
+                            {summary && summary.holesCompleted > 0 && (
+                              <p className="text-gray-400 text-xs mt-1">
+                                {r.format === 'wolf'
+                                  ? `${summary.score} pts`
+                                  : summary.score === 0 ? 'E'
+                                  : summary.score > 0 ? `+${summary.score}`
+                                  : `${summary.score}`
+                                }
+                                {' · '}{summary.holesCompleted}/{r.holes} holes
+                              </p>
+                            )}
                           </div>
-                          <p className="text-gray-400 text-xs">PIN: {g.pin}</p>
-                          <div className="flex flex-col gap-0.5 mt-1">
-                            {g.players.map((p) => {
-                              const ppts = summary?.playerPoints?.find((pp) => pp.playerId === p.id);
-                              return (
-                                <p key={p.id} className="text-gray-300 text-xs flex items-center justify-between pr-2">
-                                  <span>• {p.name}</span>
-                                  {ppts && ppts.pts > 0 && <span className="text-yellow-400">{ppts.pts}pts</span>}
-                                </p>
-                              );
-                            })}
+                          <div className="flex flex-col items-end gap-1.5 ml-2">
+                            <button
+                              onClick={() => openEdit(g)}
+                              className="text-blue-400 text-xs font-medium px-1"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => removeGroup(r.id, g.id)}
+                              className="text-red-400 text-xs font-medium px-1"
+                            >
+                              Delete
+                            </button>
                           </div>
-                          {summary && summary.holesCompleted > 0 && (
-                            <p className="text-gray-400 text-xs mt-1">
-                              {r.format === 'wolf'
-                                ? `${summary.score} pts`
-                                : summary.score === 0 ? 'E'
-                                : summary.score > 0 ? `+${summary.score}`
-                                : `${summary.score}`
-                              }
-                              {' · '}{summary.holesCompleted}/{r.holes} holes
-                            </p>
-                          )}
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 ml-2">
-                          <button
-                            onClick={() => openEdit(g)}
-                            className="text-blue-400 text-xs font-medium px-1"
+                        <div className="flex items-center gap-3 border-t border-gray-600 pt-2">
+                          <a
+                            href={`sms:?body=${encodeURIComponent(`${r.name} — You're in '${g.name}' (PIN: ${g.pin}). Enter your scores here: ${window.location.origin}`)}`}
+                            className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
                           >
-                            Edit
-                          </button>
+                            💬 Text
+                          </a>
+                          {typeof navigator.share === 'function' && (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await navigator.share({
+                                    title: `${r.name} — ${g.name}`,
+                                    text: `${r.name} — You're in '${g.name}' (PIN: ${g.pin}). Enter your scores here: ${window.location.origin}`,
+                                    url: window.location.origin,
+                                  });
+                                } catch {
+                                  // user cancelled or API failed — silent
+                                }
+                              }}
+                              className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
+                            >
+                              📤 Share
+                            </button>
+                          )}
                           <button
-                            onClick={() => removeGroup(r.id, g.id)}
-                            className="text-red-400 text-xs font-medium px-1"
+                            onClick={async () => {
+                              await navigator.clipboard.writeText(
+                                `${r.name} — You're in '${g.name}' (PIN: ${g.pin}). Enter your scores here: ${window.location.origin}`
+                              );
+                              setCopiedGroupId(g.id);
+                              setTimeout(() => setCopiedGroupId((id) => id === g.id ? null : id), 2000);
+                            }}
+                            className="flex items-center gap-1 text-xs font-medium active:text-gray-200 text-gray-400"
                           >
-                            Delete
+                            {copiedGroupId === g.id ? <span className="text-green-400">✓ Copied!</span> : '📋 Copy'}
                           </button>
                         </div>
                       </div>
