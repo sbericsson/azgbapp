@@ -450,8 +450,15 @@ export function Admin() {
   const saveRoundFields = async () => {
     if (!editingRoundFieldId) return;
     setREditSaving(true);
+    const currentRound = rounds.find((r) => r.id === editingRoundFieldId);
     const data: Partial<Omit<Round, 'id'>> = { format: rEditFormat, courseId: rEditCourseId || undefined };
     await updateRound(TOURNAMENT_ID, editingRoundFieldId, data);
+    // If the format changed, old score docs have the wrong hole structure — clear them
+    // so useGroup rebuilds fresh holes for the new format on next load.
+    if (currentRound && currentRound.format !== rEditFormat) {
+      await clearRoundScores(TOURNAMENT_ID, editingRoundFieldId);
+      setScoresByRound((s) => ({ ...s, [editingRoundFieldId]: [] }));
+    }
     setRounds((rs) => rs.map((r) => r.id === editingRoundFieldId ? { ...r, ...data } : r));
     setEditingRoundFieldId(null);
     setREditSaving(false);
