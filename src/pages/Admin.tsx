@@ -158,6 +158,8 @@ export function Admin() {
 
   // Status-change confirmation
   const [pendingStatusRound, setPendingStatusRound] = useState<Round | null>(null);
+  // Delete confirmation
+  const [pendingDeleteRound, setPendingDeleteRound] = useState<Round | null>(null);
 
   useEffect(() => {
     listGolfers(TOURNAMENT_ID).then((gs) =>
@@ -790,7 +792,7 @@ export function Admin() {
                       {r.status}
                     </button>
                     <button
-                      onPointerDown={() => removeRound(r.id)}
+                      onPointerDown={() => setPendingDeleteRound(r)}
                       className="text-red-400 text-xs font-medium px-1"
                     >
                       Delete
@@ -1006,6 +1008,31 @@ export function Admin() {
           );
         })}
       </div>
+
+      {/* Round delete confirmation modal */}
+      {pendingDeleteRound && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
+          <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
+            <p className="text-sm leading-relaxed text-red-300">
+              Delete "{pendingDeleteRound.name}"? This cannot be undone and will remove all pairings and scores.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onPointerDown={() => setPendingDeleteRound(null)}
+                className="flex-1 h-10 bg-gray-600 rounded-xl text-sm text-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onPointerDown={() => { removeRound(pendingDeleteRound.id); setPendingDeleteRound(null); }}
+                className="flex-1 h-10 rounded-xl text-sm font-semibold text-white bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Round status confirmation modal */}
       {pendingStatusRound && (() => {

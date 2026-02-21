@@ -45,7 +45,7 @@ export function Leaderboard() {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <header className="bg-gray-900 px-4 py-4 flex items-center gap-3 border-b border-gray-700">
-        <button onPointerDown={() => navigate(-1)} className="text-gray-400 text-2xl p-3 -ml-3">‹</button>
+        <button onPointerDown={() => round?.status === 'complete' ? navigate('/') : navigate(-1)} className="text-gray-400 text-2xl p-3 -ml-3">‹</button>
         <div className="flex-1">
           <h1 className="text-lg font-bold">Leaderboard</h1>
           {round && (
