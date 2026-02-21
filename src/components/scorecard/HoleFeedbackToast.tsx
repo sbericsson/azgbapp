@@ -31,7 +31,7 @@ export function HoleFeedbackToast({ message, onDismiss }: Props) {
       className={`fixed left-4 right-4 bottom-20 z-40 transition-transform duration-300 ease-out ${
         visible ? 'translate-y-0' : 'translate-y-full'
       }`}
-      onPointerDown={onDismiss}
+      onClick={onDismiss}
     >
       <div className="bg-gray-800/95 rounded-2xl px-5 py-4 shadow-xl">
         <p className="text-white text-sm leading-relaxed">{message}</p>

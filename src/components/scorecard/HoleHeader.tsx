@@ -20,7 +20,7 @@ export function HoleHeader({ holeNumber, par, groupName, roundName, courseName, 
             <p className="text-white font-semibold">{groupName}</p>
             {onEditGroupName && (
               <button
-                onPointerDown={onEditGroupName}
+                onClick={onEditGroupName}
                 className="text-gray-500 text-xs px-1 py-0.5 rounded hover:text-gray-300"
                 aria-label="Edit group name"
               >

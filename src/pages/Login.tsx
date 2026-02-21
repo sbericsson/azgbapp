@@ -86,26 +86,26 @@ export function Login() {
           {digits.map((d) => (
             <button
               key={d}
-              onPointerDown={() => append(d)}
+              onClick={() => append(d)}
               className="h-16 rounded-2xl bg-gray-800 text-white text-2xl font-semibold active:bg-gray-700 select-none"
             >
               {d}
             </button>
           ))}
           <button
-            onPointerDown={clear}
+            onClick={clear}
             className="h-16 rounded-2xl bg-gray-800 text-gray-400 text-lg active:bg-gray-700 select-none"
           >
             CLR
           </button>
           <button
-            onPointerDown={() => append('0')}
+            onClick={() => append('0')}
             className="h-16 rounded-2xl bg-gray-800 text-white text-2xl font-semibold active:bg-gray-700 select-none"
           >
             0
           </button>
           <button
-            onPointerDown={backspace}
+            onClick={backspace}
             className="h-16 rounded-2xl bg-gray-800 text-gray-400 text-2xl active:bg-gray-700 select-none"
           >
             ⌫
@@ -113,7 +113,7 @@ export function Login() {
         </div>
 
         <button
-          onPointerDown={() => submit()}
+          onClick={() => submit()}
           disabled={loading || pin.length < 4}
           className="w-full mt-6 h-16 rounded-2xl bg-green-600 text-white text-xl font-bold
             active:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed select-none"

@@ -44,7 +44,7 @@ export function ScrambleInput({ value, par, onChange, disabled, cumulativeScore,
       <span className="text-white font-medium text-base flex-1">Team Score</span>
       <div className="flex items-center gap-3">
         <button
-          onPointerDown={decrement}
+          onClick={decrement}
           disabled={disabled}
           aria-label="Decrease score"
           className="w-14 h-14 rounded-xl bg-gray-700 text-white text-2xl font-bold active:bg-gray-600 flex items-center justify-center select-none"
@@ -55,7 +55,7 @@ export function ScrambleInput({ value, par, onChange, disabled, cumulativeScore,
           {display}
         </span>
         <button
-          onPointerDown={increment}
+          onClick={increment}
           disabled={disabled}
           aria-label="Increase score"
           className="w-14 h-14 rounded-xl bg-gray-700 text-white text-2xl font-bold active:bg-gray-600 flex items-center justify-center select-none"

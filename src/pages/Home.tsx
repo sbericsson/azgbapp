@@ -54,7 +54,7 @@ export function Home() {
           <img src="/azgb-logo.png" alt="AZGB" className="h-10 w-auto bg-white rounded-lg p-0.5" />
           {group && <p className="text-green-400 text-sm font-medium">{group.name}</p>}
         </div>
-        <button onPointerDown={logout} className="text-gray-400 text-sm">
+        <button onClick={logout} className="text-gray-400 text-sm">
           Logout
         </button>
       </header>

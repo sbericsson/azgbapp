@@ -298,7 +298,7 @@ export function Scorecard() {
             <span className="text-gray-300 text-sm flex-1">Hole locked</span>
             {!isComplete && (
               <button
-                onPointerDown={handleUnlockHole}
+                onClick={handleUnlockHole}
                 className="text-yellow-400 text-sm font-medium"
               >
                 Unlock
@@ -350,13 +350,13 @@ export function Scorecard() {
       {/* Bottom action bar */}
       <div className="bg-gray-900 border-t border-gray-700 p-4 flex gap-3 pb-safe">
         <button
-          onPointerDown={() => navigate('/')}
+          onClick={() => navigate('/')}
           className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
         >
           ← Rounds
         </button>
         <button
-          onPointerDown={() => navigate(`/leaderboard/${round.id}`)}
+          onClick={() => navigate(`/leaderboard/${round.id}`)}
           className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
         >
           Leaderboard
@@ -369,7 +369,7 @@ export function Scorecard() {
         ) : !hole?.locked ? (
           canLock ? (
             <button
-              onPointerDown={() => setShowLockConfirm(true)}
+              onClick={() => setShowLockConfirm(true)}
               disabled={saving}
               className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
             >
@@ -397,13 +397,13 @@ export function Scorecard() {
             </p>
             <div className="flex gap-3">
               <button
-                onPointerDown={() => setShowLockConfirm(false)}
+                onClick={() => setShowLockConfirm(false)}
                 className="flex-1 h-14 rounded-xl bg-gray-700 text-gray-300 font-medium"
               >
                 Cancel
               </button>
               <button
-                onPointerDown={handleLockHole}
+                onClick={handleLockHole}
                 className="flex-1 h-14 rounded-xl bg-green-600 text-white font-bold"
               >
                 Lock It
@@ -432,13 +432,13 @@ export function Scorecard() {
             />
             <div className="flex gap-3">
               <button
-                onPointerDown={() => setEditingName(false)}
+                onClick={() => setEditingName(false)}
                 className="flex-1 h-12 rounded-xl bg-gray-700 text-gray-300 font-medium"
               >
                 Cancel
               </button>
               <button
-                onPointerDown={handleEditNameSave}
+                onClick={handleEditNameSave}
                 disabled={!nameInput.trim()}
                 className="flex-1 h-12 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
               >
