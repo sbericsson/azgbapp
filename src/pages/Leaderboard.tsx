@@ -45,7 +45,7 @@ export function Leaderboard() {
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       <header className="bg-gray-900 px-4 py-4 flex items-center gap-3 border-b border-gray-700">
-        <button onPointerDown={() => round?.status === 'complete' ? navigate('/') : navigate(-1)} className="text-gray-400 text-2xl p-3 -ml-3">‹</button>
+        <button onClick={() => round?.status === 'complete' ? navigate('/') : navigate(-1)} className="text-gray-400 text-2xl p-3 -ml-3">‹</button>
         <div className="flex-1">
           <h1 className="text-lg font-bold">Leaderboard</h1>
           {round && (
@@ -116,7 +116,7 @@ export function Leaderboard() {
       <div className="bg-gray-900 border-t border-gray-700 p-4 pb-safe">
         {roundId && group && group.roundId === roundId && round?.status !== 'complete' && (
           <button
-            onPointerDown={() => navigate(`/scorecard/${roundId}`)}
+            onClick={() => navigate(`/scorecard/${roundId}`)}
             className="w-full h-14 rounded-xl bg-green-700 text-white font-bold"
           >
             Back to Scorecard
