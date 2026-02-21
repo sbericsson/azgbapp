@@ -5,14 +5,15 @@ import {
   createCourse, listCourses, updateCourse, deleteCourse,
   createGroup, updateGroup, deleteGroup, listGroupsByRound,
   createRound, listRounds, deleteRound, updateRound,
-  listAllScores,
+  listAllScores, clearRoundScores,
 } from '../lib/firestore';
 import type { Golfer, Course, Group, Round, RoundFormat, Player } from '../types/tournament';
-import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
+import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
 import { DEFAULT_PAR } from '../constants/wolf';
 import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
 import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
 import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
+import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 import { nanoid } from '../lib/nanoid';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
@@ -49,6 +50,10 @@ function computeGroupSummary(
   if (round.format === 'bestBall') {
     const bbHoles = lockedHoles.filter(isBestBallHole) as BestBallHoleScore[];
     return { groupId: group.id, score: bestBallTotalToPar(bbHoles, round.par), holesCompleted };
+  }
+  if (round.format === 'gauntlet') {
+    const gHoles = lockedHoles.filter(isGauntletHole) as GauntletHoleScore[];
+    return { groupId: group.id, score: gauntletTotalToPar(gHoles, round.par), holesCompleted };
   }
   const sHoles = lockedHoles.filter(isScrambleHole) as ScrambleHoleScore[];
   return { groupId: group.id, score: scrambleTotalToPar(sHoles, round.par), holesCompleted };
@@ -161,6 +166,12 @@ export function Admin() {
   const [pendingStatusRound, setPendingStatusRound] = useState<Round | null>(null);
   // Delete confirmation
   const [pendingDeleteRound, setPendingDeleteRound] = useState<Round | null>(null);
+
+  // Inline round field editing (format/course, pending rounds only)
+  const [editingRoundFieldId, setEditingRoundFieldId] = useState<string | null>(null);
+  const [rEditFormat, setREditFormat] = useState<RoundFormat>('wolf');
+  const [rEditCourseId, setREditCourseId] = useState('');
+  const [rEditSaving, setREditSaving] = useState(false);
 
   useEffect(() => {
     listGolfers(TOURNAMENT_ID).then((gs) =>
@@ -429,7 +440,21 @@ export function Admin() {
           ? 'complete'
           : 'pending';
     await updateRound(TOURNAMENT_ID, round.id, { status: next });
+    if (round.status === 'complete' && next === 'pending') {
+      await clearRoundScores(TOURNAMENT_ID, round.id);
+      setScoresByRound((s) => ({ ...s, [round.id]: [] }));
+    }
     setRounds((rs) => rs.map((r) => (r.id === round.id ? { ...r, status: next } : r)));
+  };
+
+  const saveRoundFields = async () => {
+    if (!editingRoundFieldId) return;
+    setREditSaving(true);
+    const data: Partial<Omit<Round, 'id'>> = { format: rEditFormat, courseId: rEditCourseId || undefined };
+    await updateRound(TOURNAMENT_ID, editingRoundFieldId, data);
+    setRounds((rs) => rs.map((r) => r.id === editingRoundFieldId ? { ...r, ...data } : r));
+    setEditingRoundFieldId(null);
+    setREditSaving(false);
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────────
@@ -697,6 +722,7 @@ export function Admin() {
               <option value="wolf">Wolf</option>
               <option value="bestBall">Best Ball</option>
               <option value="scramble">Scramble</option>
+              <option value="gauntlet">Gauntlet</option>
             </select>
           </div>
 
@@ -801,6 +827,61 @@ export function Admin() {
                     <span className="text-gray-500 text-sm">{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </div>
+
+                {/* Inline format/course editor — pending rounds only */}
+                {r.status === 'pending' && editingRoundFieldId !== r.id && (
+                  <button
+                    onClick={() => {
+                      setEditingRoundFieldId(r.id);
+                      setREditFormat(r.format);
+                      setREditCourseId(r.courseId ?? '');
+                    }}
+                    className="mt-1.5 text-blue-400 text-xs font-medium"
+                  >
+                    Edit format/course
+                  </button>
+                )}
+                {r.status === 'pending' && editingRoundFieldId === r.id && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      <select
+                        value={rEditFormat}
+                        onChange={(e) => setREditFormat(e.target.value as RoundFormat)}
+                        className="flex-1 bg-gray-700 rounded-lg px-2 py-2 text-white text-sm"
+                      >
+                        <option value="wolf">Wolf</option>
+                        <option value="bestBall">Best Ball</option>
+                        <option value="scramble">Scramble</option>
+                        <option value="gauntlet">Gauntlet</option>
+                      </select>
+                      <select
+                        value={rEditCourseId}
+                        onChange={(e) => setREditCourseId(e.target.value)}
+                        className="flex-1 bg-gray-700 rounded-lg px-2 py-2 text-white text-sm"
+                      >
+                        <option value="">No course</option>
+                        {courses.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={saveRoundFields}
+                        disabled={rEditSaving}
+                        className="flex-1 h-9 bg-blue-600 rounded-lg text-sm text-white font-semibold disabled:opacity-50"
+                      >
+                        {rEditSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setEditingRoundFieldId(null)}
+                        className="flex-1 h-9 bg-gray-600 rounded-lg text-sm text-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Collapsible pairings */}
@@ -1079,13 +1160,13 @@ export function Admin() {
       {pendingStatusRound && (() => {
         const r = pendingStatusRound;
         const nextStatus = r.status === 'pending' ? 'active' : r.status === 'active' ? 'complete' : 'pending';
-        const isDestructive = r.status === 'active';
+        const isDestructive = r.status === 'active' || r.status === 'complete';
         const message =
           r.status === 'pending'
             ? `Start "${r.name}"? Players will be able to enter scores.`
             : r.status === 'active'
               ? `Mark "${r.name}" as complete? Players will lose editing access.`
-              : `Reset "${r.name}" to pending? It will be hidden from players.`;
+              : `Reset "${r.name}" to pending? All scores will be deleted. Groups and pairings will be kept.`;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
             <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">

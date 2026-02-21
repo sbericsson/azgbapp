@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { subscribeAllScores } from '../lib/firestore';
-import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
+import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
 import type { Group, Round } from '../types/tournament';
 import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
 import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
 import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
+import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 
 export interface LeaderboardEntry {
   groupId: string;
@@ -78,6 +79,12 @@ export function useLeaderboard(
       if (round?.format === 'scramble') {
         const sHoles = holes.filter(isScrambleHole) as ScrambleHoleScore[];
         const score = scrambleTotalToPar(sHoles, round.par);
+        return { groupId: group.id, groupName: group.name, score, holesCompleted };
+      }
+
+      if (round?.format === 'gauntlet') {
+        const gHoles = holes.filter(isGauntletHole) as GauntletHoleScore[];
+        const score = gauntletTotalToPar(gHoles, round.par);
         return { groupId: group.id, groupName: group.name, score, holesCompleted };
       }
 

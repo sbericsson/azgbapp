@@ -38,6 +38,7 @@ export function isScrambleHole(hole: unknown): hole is ScrambleHoleScore {
   return (
     typeof hole === 'object' &&
     hole !== null &&
-    'teamScore' in hole
+    'teamScore' in hole &&
+    !('segment' in hole)
   );
 }

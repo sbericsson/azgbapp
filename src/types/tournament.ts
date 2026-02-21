@@ -16,7 +16,7 @@ export interface Group {
   roundId: string;
 }
 
-export type RoundFormat = 'wolf' | 'bestBall' | 'scramble';
+export type RoundFormat = 'wolf' | 'bestBall' | 'scramble' | 'gauntlet';
 export type RoundStatus = 'pending' | 'active' | 'complete';
 
 export interface Round {

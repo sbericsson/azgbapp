@@ -5,7 +5,7 @@ import { useGroup } from '../hooks/useGroup';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { listRounds, getCourse, subscribeGroupsByRound } from '../lib/firestore';
 import type { Round, Group } from '../types/tournament';
-import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
+import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
 import { HoleHeader } from '../components/scorecard/HoleHeader';
 import { HoleNav } from '../components/scorecard/HoleNav';
 import { WolfControls } from '../components/scorecard/WolfControls';
@@ -21,6 +21,7 @@ import {
 } from '../lib/scoring/wolf';
 import { computeBestScore, isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
+import { isGauntletHole, getAltShotTeeOffIndex } from '../lib/scoring/gauntlet';
 import {
   generateWolfFeedback,
   generateBestBallFeedback,
@@ -178,6 +179,17 @@ export function Scorecard() {
     ? (holes as ScrambleHoleScore[]).filter((h, i) => h.locked && i <= currentHole).length
     : 0;
 
+  // Gauntlet cumulative running total through current hole
+  const gauntletCumulative = round.format === 'gauntlet'
+    ? (holes as GauntletHoleScore[]).reduce((sum, h, i) => {
+        if (i > currentHole || !h.locked || h.teamScore === null) return sum;
+        return sum + (h.teamScore - (round.par[i] ?? 4));
+      }, 0)
+    : null;
+  const gauntletHolesLocked = round.format === 'gauntlet'
+    ? holes.filter((h, i) => h.locked && i <= currentHole).length
+    : 0;
+
   const handleLockHole = async () => {
     if (!hole) return;
     if (isWolfHole(hole)) {
@@ -201,6 +213,9 @@ export function Scorecard() {
     } else if (isScrambleHole(locked)) {
       const sc = locked as ScrambleHoleScore;
       if (sc.teamScore === null) locked = { ...sc, teamScore: par };
+    } else if (isGauntletHole(locked)) {
+      const g = locked as GauntletHoleScore;
+      if (g.teamScore === null) locked = { ...g, teamScore: par };
     }
 
     await saveHole(currentHole, locked);
@@ -216,6 +231,11 @@ export function Scorecard() {
     } else if (isScrambleHole(locked)) {
       msg = generateScrambleFeedback(
         locked as ScrambleHoleScore, par, rankForFeedback, allGroups.length, currentHole,
+      );
+    } else if (isGauntletHole(locked)) {
+      msg = generateScrambleFeedback(
+        { teamScore: (locked as GauntletHoleScore).teamScore, locked: true },
+        par, rankForFeedback, allGroups.length, currentHole,
       );
     }
     setFeedbackMessage(msg);
@@ -248,6 +268,11 @@ export function Scorecard() {
   const handleScrambleChange = (teamScore: number) => {
     if (!isScrambleHole(hole)) return;
     setLocalHole(currentHole, { ...(hole as ScrambleHoleScore), teamScore });
+  };
+
+  const handleGauntletChange = (teamScore: number) => {
+    if (!isGauntletHole(hole)) return;
+    setLocalHole(currentHole, { ...(hole as GauntletHoleScore), teamScore });
   };
 
   const handleEditNameSave = async () => {
@@ -344,6 +369,35 @@ export function Scorecard() {
             cumulativeScore={scrambleCumulative}
             holesLocked={scrambleHolesLocked}
           />
+        )}
+
+        {round.format === 'gauntlet' && isGauntletHole(hole) && (
+          <>
+            <div className="bg-gray-800 rounded-xl px-4 py-2.5 mb-3 text-center border border-gray-700">
+              {(hole as GauntletHoleScore).segment === 'bestBall' && (
+                <p className="text-gray-300 text-sm font-medium">Best Ball · Holes 1–6</p>
+              )}
+              {(hole as GauntletHoleScore).segment === 'scramble' && (
+                <p className="text-gray-300 text-sm font-medium">Scramble · Holes 7–12</p>
+              )}
+              {(hole as GauntletHoleScore).segment === 'altShot' && (
+                <>
+                  <p className="text-gray-300 text-sm font-medium">Alternate Shot · Holes 13–18</p>
+                  <p className="text-blue-400 text-xs mt-0.5 font-medium">
+                    {players[getAltShotTeeOffIndex(currentHole, round.holes)]?.name ?? 'Player 1'} tees off
+                  </p>
+                </>
+              )}
+            </div>
+            <ScrambleInput
+              value={(hole as GauntletHoleScore).teamScore}
+              par={par}
+              disabled={hole.locked}
+              onChange={handleGauntletChange}
+              cumulativeScore={gauntletCumulative}
+              holesLocked={gauntletHolesLocked}
+            />
+          </>
         )}
       </div>
 

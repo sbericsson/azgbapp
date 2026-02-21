@@ -34,7 +34,15 @@ export interface ScrambleHoleScore {
   locked: boolean;
 }
 
-export type HoleScore = WolfHoleScore | BestBallHoleScore | ScrambleHoleScore;
+// Gauntlet (2-person): holes 1–6 best ball, 7–12 scramble, 13–18 alternate shot
+// All three segments use a single team score entry.
+export interface GauntletHoleScore {
+  segment: 'bestBall' | 'scramble' | 'altShot';
+  teamScore: number | null;
+  locked: boolean;
+}
+
+export type HoleScore = WolfHoleScore | BestBallHoleScore | ScrambleHoleScore | GauntletHoleScore;
 
 export interface GroupScoreDoc {
   groupId: string;

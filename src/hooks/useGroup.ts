@@ -5,6 +5,7 @@ import type { Round } from '../types/tournament';
 import { emptyWolfHole } from '../lib/scoring/wolf';
 import { emptyBestBallHole } from '../lib/scoring/bestBall';
 import { emptyScrambleHole } from '../lib/scoring/scramble';
+import { emptyGauntletHole } from '../lib/scoring/gauntlet';
 import type { Player } from '../types/tournament';
 
 interface UseGroupReturn {
@@ -26,6 +27,8 @@ function buildInitialHoles(round: Round, players: Player[]): HoleScore[] {
         return emptyBestBallHole(players);
       case 'scramble':
         return emptyScrambleHole();
+      case 'gauntlet':
+        return emptyGauntletHole(i, round.holes);
     }
   });
 }

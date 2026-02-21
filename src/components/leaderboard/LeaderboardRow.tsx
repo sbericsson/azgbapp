@@ -1,9 +1,10 @@
 import type { LeaderboardEntry } from '../../hooks/useLeaderboard';
+import type { RoundFormat } from '../../types/tournament';
 
 interface LeaderboardRowProps {
   entry: LeaderboardEntry;
   rank: number;
-  format: 'wolf' | 'bestBall' | 'scramble';
+  format: RoundFormat;
   onClick?: () => void;
 }
 

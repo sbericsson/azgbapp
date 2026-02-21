@@ -85,6 +85,9 @@ export function Leaderboard() {
         {!loading && round?.format === 'scramble' && (
           <TeamLeaderboard entries={entries} format="scramble" onGroupClick={handleGroupClick} />
         )}
+        {!loading && round?.format === 'gauntlet' && (
+          <TeamLeaderboard entries={entries} format="gauntlet" onGroupClick={handleGroupClick} />
+        )}
 
         {/* Wolf format also shows per-player totals across groups */}
         {!loading && round?.format === 'wolf' && entries.length > 0 && (
