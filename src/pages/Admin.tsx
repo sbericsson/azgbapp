@@ -89,7 +89,7 @@ function ParEditor({
           <div key={hole} className="flex flex-col items-center gap-0.5">
             <span className="text-gray-500 text-xs">{hole + 1}</span>
             <button
-              onPointerDown={() => onCycle(hole)}
+              onClick={() => onCycle(hole)}
               className={`w-full h-8 rounded text-xs font-bold text-white
                 ${p === 3 ? 'bg-blue-700' : p === 5 ? 'bg-purple-700' : 'bg-gray-600'}`}
             >
@@ -462,7 +462,7 @@ export function Admin() {
           <h1 className="text-xl font-bold">Admin</h1>
           <p className="text-gray-400 text-sm">{tournament?.name}</p>
         </div>
-        <button onPointerDown={logout} className="text-red-400 text-sm font-medium">
+        <button onClick={logout} className="text-red-400 text-sm font-medium">
           Logout
         </button>
       </header>
@@ -472,7 +472,7 @@ export function Admin() {
         {/* ── Golfer Roster ── */}
         <div className="bg-gray-800 rounded-2xl overflow-hidden">
           <button
-            onPointerDown={() => setRosterOpen((o) => !o)}
+            onClick={() => setRosterOpen((o) => !o)}
             className="w-full px-4 py-4 flex items-center justify-between text-left"
           >
             <div>
@@ -495,7 +495,7 @@ export function Admin() {
                   onKeyDown={(e) => e.key === 'Enter' && addGolfer()}
                 />
                 <button
-                  onPointerDown={addGolfer}
+                  onClick={addGolfer}
                   disabled={golferSaving || !newGolferName.trim()}
                   className="px-4 h-10 bg-green-600 rounded-xl font-semibold text-sm disabled:opacity-40"
                 >
@@ -508,7 +508,7 @@ export function Admin() {
                   <div key={g.id} className="flex items-center justify-between bg-gray-700 rounded-xl px-3 py-2">
                     <span className="text-sm">{g.name}</span>
                     <button
-                      onPointerDown={() => removeGolfer(g.id)}
+                      onClick={() => removeGolfer(g.id)}
                       className="text-red-400 text-xs font-medium px-1"
                     >
                       Remove
@@ -523,7 +523,7 @@ export function Admin() {
         {/* ── Courses ── */}
         <div className="bg-gray-800 rounded-2xl overflow-hidden">
           <button
-            onPointerDown={() => setCoursesOpen((o) => !o)}
+            onClick={() => setCoursesOpen((o) => !o)}
             className="w-full px-4 py-4 flex items-center justify-between text-left"
           >
             <div>
@@ -557,7 +557,7 @@ export function Admin() {
                       {[9, 18].map((n) => (
                         <button
                           key={n}
-                          onPointerDown={() => handleCHolesChange(n)}
+                          onClick={() => handleCHolesChange(n)}
                           className={`px-3 py-1.5 rounded-lg text-sm font-semibold
                             ${cHoles === n ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}
                         >
@@ -569,14 +569,14 @@ export function Admin() {
                     <ParEditor par={cPar} holes={cHoles} onCycle={cycleCPar} />
                     <div className="flex gap-2 mt-1">
                       <button
-                        onPointerDown={() => saveEditCourse(c.id)}
+                        onClick={() => saveEditCourse(c.id)}
                         disabled={cSaving || !cName.trim()}
                         className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                       >
                         {cSaving ? 'Saving…' : 'Save'}
                       </button>
                       <button
-                        onPointerDown={cancelCourseForm}
+                        onClick={cancelCourseForm}
                         className="px-4 h-10 bg-gray-600 rounded-lg text-sm text-gray-300"
                       >
                         Cancel
@@ -598,13 +598,13 @@ export function Admin() {
                       </div>
                       <div className="flex flex-col items-end gap-1.5">
                         <button
-                          onPointerDown={() => openEditCourse(c)}
+                          onClick={() => openEditCourse(c)}
                           className="text-blue-400 text-xs font-medium px-1"
                         >
                           Edit
                         </button>
                         <button
-                          onPointerDown={() => removeCourse(c.id)}
+                          onClick={() => removeCourse(c.id)}
                           className="text-red-400 text-xs font-medium px-1"
                         >
                           Delete
@@ -630,7 +630,7 @@ export function Admin() {
                     {[9, 18].map((n) => (
                       <button
                         key={n}
-                        onPointerDown={() => handleCHolesChange(n)}
+                        onClick={() => handleCHolesChange(n)}
                         className={`px-3 py-1.5 rounded-lg text-sm font-semibold
                           ${cHoles === n ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}
                       >
@@ -642,14 +642,14 @@ export function Admin() {
                   <ParEditor par={cPar} holes={cHoles} onCycle={cycleCPar} />
                   <div className="flex gap-2 mt-1">
                     <button
-                      onPointerDown={saveCourse}
+                      onClick={saveCourse}
                       disabled={cSaving || !cName.trim()}
                       className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                     >
                       {cSaving ? 'Saving…' : 'Save Course'}
                     </button>
                     <button
-                      onPointerDown={cancelCourseForm}
+                      onClick={cancelCourseForm}
                       className="px-4 h-10 bg-gray-600 rounded-lg text-sm text-gray-300"
                     >
                       Cancel
@@ -658,7 +658,7 @@ export function Admin() {
                 </div>
               ) : (
                 <button
-                  onPointerDown={openAddCourse}
+                  onClick={openAddCourse}
                   className="h-10 bg-gray-700 rounded-xl text-sm text-green-400 font-semibold border border-gray-600"
                 >
                   + Add Course
@@ -719,7 +719,7 @@ export function Admin() {
             {[9, 18].map((n) => (
               <button
                 key={n}
-                onPointerDown={() => handleRHolesChange(n)}
+                onClick={() => handleRHolesChange(n)}
                 className={`px-4 py-2 rounded-xl font-semibold text-sm
                   ${rHoles === n ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-300'}`}
               >
@@ -740,7 +740,7 @@ export function Admin() {
           </div>
 
           <button
-            onPointerDown={saveRound}
+            onClick={saveRound}
             disabled={rSaving || !rName.trim()}
             className="h-12 bg-green-600 rounded-xl font-bold disabled:opacity-40"
           >
@@ -772,7 +772,7 @@ export function Admin() {
               <div className="p-4">
                 <div className="flex items-start justify-between">
                   <button
-                    onPointerDown={() => toggleExpand(r.id)}
+                    onClick={() => toggleExpand(r.id)}
                     className="flex-1 text-left"
                   >
                     <p className="font-semibold">{r.name}</p>
@@ -783,7 +783,7 @@ export function Admin() {
                   </button>
                   <div className="flex items-center gap-2 ml-2">
                     <button
-                      onPointerDown={() => setPendingStatusRound(r)}
+                      onClick={() => setPendingStatusRound(r)}
                       className={`text-xs px-3 py-1.5 rounded-lg font-semibold
                         ${r.status === 'active' ? 'bg-green-700 text-white' :
                           r.status === 'complete' ? 'bg-gray-600 text-gray-300' :
@@ -792,7 +792,7 @@ export function Admin() {
                       {r.status}
                     </button>
                     <button
-                      onPointerDown={() => setPendingDeleteRound(r)}
+                      onClick={() => setPendingDeleteRound(r)}
                       className="text-red-400 text-xs font-medium px-1"
                     >
                       Delete
@@ -830,7 +830,7 @@ export function Admin() {
                             inputMode="numeric"
                           />
                           <button
-                            onPointerDown={() => setGPin(randomPin(tournament?.adminPin))}
+                            onClick={() => setGPin(randomPin(tournament?.adminPin))}
                             className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
                           >
                             Random PIN
@@ -864,14 +864,14 @@ export function Admin() {
                         })}
                         <div className="flex gap-2 mt-1">
                           <button
-                            onPointerDown={() => saveEdit(r.id, g)}
+                            onClick={() => saveEdit(r.id, g)}
                             disabled={gSaving || !gName.trim() || !gPin.trim()}
                             className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                           >
                             {gSaving ? 'Saving…' : 'Save'}
                           </button>
                           <button
-                            onPointerDown={() => setEditingGroupId(null)}
+                            onClick={() => setEditingGroupId(null)}
                             className="px-4 h-10 bg-gray-600 rounded-lg text-sm text-gray-300"
                           >
                             Cancel
@@ -911,13 +911,13 @@ export function Admin() {
                         </div>
                         <div className="flex flex-col items-end gap-1.5 ml-2">
                           <button
-                            onPointerDown={() => openEdit(g)}
+                            onClick={() => openEdit(g)}
                             className="text-blue-400 text-xs font-medium px-1"
                           >
                             Edit
                           </button>
                           <button
-                            onPointerDown={() => removeGroup(r.id, g.id)}
+                            onClick={() => removeGroup(r.id, g.id)}
                             className="text-red-400 text-xs font-medium px-1"
                           >
                             Delete
@@ -946,7 +946,7 @@ export function Admin() {
                           inputMode="numeric"
                         />
                         <button
-                          onPointerDown={() => setGPin(randomPin(tournament?.adminPin))}
+                          onClick={() => setGPin(randomPin(tournament?.adminPin))}
                           className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
                         >
                           Random PIN
@@ -980,14 +980,14 @@ export function Admin() {
                       })}
                       <div className="flex gap-2 mt-1">
                         <button
-                          onPointerDown={() => savePairing(r.id)}
+                          onClick={() => savePairing(r.id)}
                           disabled={gSaving || !gName.trim() || !gPin.trim()}
                           className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                         >
                           {gSaving ? 'Saving…' : 'Save'}
                         </button>
                         <button
-                          onPointerDown={cancelAddPairing}
+                          onClick={cancelAddPairing}
                           className="px-4 h-10 bg-gray-600 rounded-lg text-sm text-gray-300"
                         >
                           Cancel
@@ -996,7 +996,7 @@ export function Admin() {
                     </div>
                   ) : (
                     <button
-                      onPointerDown={() => openAddPairing(r.id)}
+                      onClick={() => openAddPairing(r.id)}
                       className="h-10 bg-gray-700 rounded-xl text-sm text-green-400 font-semibold border border-gray-600"
                     >
                       + Add Pairing
@@ -1018,13 +1018,13 @@ export function Admin() {
             </p>
             <div className="flex gap-3">
               <button
-                onPointerDown={() => setPendingDeleteRound(null)}
+                onClick={() => setPendingDeleteRound(null)}
                 className="flex-1 h-10 bg-gray-600 rounded-xl text-sm text-gray-200"
               >
                 Cancel
               </button>
               <button
-                onPointerDown={() => { removeRound(pendingDeleteRound.id); setPendingDeleteRound(null); }}
+                onClick={() => { removeRound(pendingDeleteRound.id); setPendingDeleteRound(null); }}
                 className="flex-1 h-10 rounded-xl text-sm font-semibold text-white bg-red-700"
               >
                 Delete
@@ -1053,13 +1053,13 @@ export function Admin() {
               </p>
               <div className="flex gap-3">
                 <button
-                  onPointerDown={() => setPendingStatusRound(null)}
+                  onClick={() => setPendingStatusRound(null)}
                   className="flex-1 h-10 bg-gray-600 rounded-xl text-sm text-gray-200"
                 >
                   Cancel
                 </button>
                 <button
-                  onPointerDown={() => { toggleRoundStatus(r); setPendingStatusRound(null); }}
+                  onClick={() => { toggleRoundStatus(r); setPendingStatusRound(null); }}
                   className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white
                     ${isDestructive ? 'bg-red-700' : 'bg-green-700'}`}
                 >
