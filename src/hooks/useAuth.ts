@@ -146,13 +146,9 @@ export function useAuthProvider(): AuthContextValue {
 
   const logout = useCallback(() => {
     localStorage.removeItem(SESSION_KEY);
-    setState({
-      tournamentId: null,
-      tournament: null,
-      group: null,
-      isAdmin: false,
-      loading: false,
-    });
+    // Full page reload: re-initializes Firestore from scratch, clearing any
+    // stale IndexedDB state from the previous session.
+    window.location.replace('/');
   }, []);
 
   const updateGroupName = useCallback(

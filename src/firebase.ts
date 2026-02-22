@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import {
   initializeFirestore,
   persistentLocalCache,
-  persistentMultipleTabManager,
+  persistentSingleTabManager,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -16,10 +16,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// Enable offline persistence with multi-tab support
+// Single-tab persistence: avoids IndexedDB lock contention when a previous
+// tab was killed by iOS without releasing the multi-tab primary-tab lock.
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
+    tabManager: persistentSingleTabManager({ forceOwnership: true }),
   }),
 });
 
