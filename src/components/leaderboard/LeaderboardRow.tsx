@@ -44,6 +44,11 @@ export function LeaderboardRow({ entry, rank, format, onClick }: LeaderboardRowP
             ))}
           </div>
         )}
+        {(format === 'scramble' || format === 'gauntlet') && entry.players && (
+          <p className="text-gray-500 text-xs mt-0.5">
+            {entry.players.map((p) => p.name.split(' ')[0]).join(' · ')}
+          </p>
+        )}
       </div>
       <span className={`text-2xl font-bold ${scoreColor(entry.score, format)}`}>
         {scoreDisplay(entry.score, format)}

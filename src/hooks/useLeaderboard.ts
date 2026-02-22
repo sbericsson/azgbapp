@@ -14,6 +14,8 @@ export interface LeaderboardEntry {
   holesCompleted: number;
   // Wolf: per-player points breakdown
   playerPoints?: { playerId: string; name: string; pts: number }[];
+  // Scramble / Gauntlet: team member names
+  players?: { id: string; name: string }[];
 }
 
 export function useLeaderboard(
@@ -79,13 +81,13 @@ export function useLeaderboard(
       if (round?.format === 'scramble') {
         const sHoles = holes.filter(isScrambleHole) as ScrambleHoleScore[];
         const score = scrambleTotalToPar(sHoles, round.par);
-        return { groupId: group.id, groupName: group.name, score, holesCompleted };
+        return { groupId: group.id, groupName: group.name, score, holesCompleted, players: group.players };
       }
 
       if (round?.format === 'gauntlet') {
         const gHoles = holes.filter(isGauntletHole) as GauntletHoleScore[];
         const score = gauntletTotalToPar(gHoles, round.par);
-        return { groupId: group.id, groupName: group.name, score, holesCompleted };
+        return { groupId: group.id, groupName: group.name, score, holesCompleted, players: group.players };
       }
 
       return { groupId: group.id, groupName: group.name, score: 0, holesCompleted };
