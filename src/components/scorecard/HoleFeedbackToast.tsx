@@ -28,13 +28,14 @@ export function HoleFeedbackToast({ message, onDismiss }: Props) {
 
   return (
     <div
-      className={`fixed left-4 right-4 bottom-20 z-40 transition-transform duration-300 ease-out ${
+      className={`fixed inset-x-0 bottom-0 z-40 transition-transform duration-300 ease-out ${
         visible ? 'translate-y-0' : 'translate-y-full'
       }`}
       onClick={onDismiss}
     >
-      <div className="bg-gray-800/95 rounded-2xl px-5 py-4 shadow-xl">
-        <p className="text-white text-sm leading-relaxed">{message}</p>
+      <div className="bg-gray-900 min-h-[55vh] flex flex-col items-center justify-center px-8 py-10 rounded-t-3xl shadow-2xl border-t border-gray-700">
+        <p className="text-white text-3xl font-bold text-center leading-snug">{message}</p>
+        <p className="text-gray-500 text-sm mt-8">Tap to dismiss</p>
       </div>
     </div>
   );

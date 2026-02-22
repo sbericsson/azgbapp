@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getGroupById, listRounds } from '../lib/firestore';
 import { useGroup } from '../hooks/useGroup';
 import type { Round, Group } from '../types/tournament';
-import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore } from '../types/scoring';
+import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
 import { isWolfHole, totalWolfPoints } from '../lib/scoring/wolf';
 import { isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
+import { isGauntletHole } from '../lib/scoring/gauntlet';
 import { WolfHoleResult } from '../components/scorecard/WolfHoleResult';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
@@ -151,9 +152,64 @@ export function PublicScorecard() {
                   </span>
                 </div>
               )}
+
+              {round.format === 'gauntlet' && isGauntletHole(hole) && (
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300 text-sm">
+                    {(hole as GauntletHoleScore).segment === 'bestBall' ? 'Best Ball' :
+                     (hole as GauntletHoleScore).segment === 'scramble' ? 'Scramble' : 'Alt Shot'}
+                  </span>
+                  <span className={`font-bold ${
+                    (hole as GauntletHoleScore).teamScore! < par ? 'text-red-400' :
+                    (hole as GauntletHoleScore).teamScore! === par ? 'text-white' : 'text-blue-400'
+                  }`}>
+                    {(hole as GauntletHoleScore).teamScore}
+                  </span>
+                </div>
+              )}
             </div>
           );
         })}
+
+        {round.status === 'complete' && round.format === 'bestBall' && lockedHoles.length > 0 && (
+          <div className="bg-gray-800 rounded-xl p-4">
+            <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Round Totals</p>
+            {players.map((p) => {
+              const total = (holes as BestBallHoleScore[]).reduce((sum, h, i) => {
+                if (!h.locked) return sum;
+                const s = h.scores.find((sc) => sc.playerId === p.id);
+                return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
+              }, 0);
+              return (
+                <div key={p.id} className="flex justify-between py-1">
+                  <span className="text-gray-300 text-sm">{p.name}</span>
+                  <span className={`text-sm font-bold ${total < 0 ? 'text-red-400' : total === 0 ? 'text-white' : 'text-blue-400'}`}>
+                    {total === 0 ? 'E' : total > 0 ? `+${total}` : total}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {round.status === 'complete' && (round.format === 'scramble' || round.format === 'gauntlet') && lockedHoles.length > 0 && (() => {
+          const total = holes.reduce((sum, h, i) => {
+            if (!h.locked) return sum;
+            const score = (h as ScrambleHoleScore | GauntletHoleScore).teamScore;
+            return score !== null ? sum + (score - (round.par[i] ?? 4)) : sum;
+          }, 0);
+          return (
+            <div className="bg-gray-800 rounded-xl p-4">
+              <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Round Total</p>
+              <div className="flex justify-between">
+                <span className="text-gray-300 text-sm">Team</span>
+                <span className={`text-sm font-bold ${total < 0 ? 'text-red-400' : total === 0 ? 'text-white' : 'text-blue-400'}`}>
+                  {total === 0 ? 'E' : total > 0 ? `+${total}` : total}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

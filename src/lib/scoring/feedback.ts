@@ -198,19 +198,28 @@ export function generateBestBallFeedback(
     ]);
   } else if (rel === 1) {
     scoreLine = pick([
-      "Bogey. Shake it off.",
-      "Drop a shot, not the attitude.",
-      "One over — bounce back time.",
+      "Bogey. You had help and still couldn't.",
+      "One over. The hole felt sorry for you.",
+      "A bogey. As a team. Impressive — not in a good way.",
+      "Dropped a shot. Regroup, or at least try to look like you are.",
+      "Bogey. At least you're consistent — consistently disappointing.",
+      "One over. The ball went everywhere except the cup.",
     ]);
   } else if (rel === 2) {
     scoreLine = pick([
-      "Double. Costly.",
-      "Two over. Deep breath and move on.",
+      "Double bogey. Just... wow.",
+      "Two over. Were you actively trying to make it harder?",
+      "Double. That hole dismantled you completely.",
+      "Two over. A moment of silence for your scorecard.",
+      "Double bogey as a team. Both of you should be ashamed.",
+      "That was a double bogey. There is no defending that.",
+      "Two over. The course sends its regards.",
     ]);
   } else {
     scoreLine = pick([
       "Oof. Let's never speak of that hole again.",
-      "Big number. Forget it, next hole.",
+      "Big number. Forget it exists.",
+      "That was a disaster. Move on quickly.",
     ]);
   }
 
@@ -249,19 +258,28 @@ export function generateScrambleFeedback(
     ]);
   } else if (rel === 1) {
     scoreLine = pick([
-      "Bogey. Shake it off.",
-      "Drop a shot, not the attitude.",
-      "One over — bounce back time.",
+      "Bogey. You had help and still couldn't.",
+      "One over. The hole felt sorry for you.",
+      "A bogey. As a team. Impressive — not in a good way.",
+      "Dropped a shot. Regroup, or at least try to look like you are.",
+      "Bogey. At least you're consistent — consistently disappointing.",
+      "One over. The ball went everywhere except the cup.",
     ]);
   } else if (rel === 2) {
     scoreLine = pick([
-      "Double. Costly.",
-      "Two over. Deep breath and move on.",
+      "Double bogey. Just... wow.",
+      "Two over. Were you actively trying to make it harder?",
+      "Double. That hole dismantled you completely.",
+      "Two over. A moment of silence for your scorecard.",
+      "Double bogey as a team. Both of you should be ashamed.",
+      "That was a double bogey. There is no defending that.",
+      "Two over. The course sends its regards.",
     ]);
   } else {
     scoreLine = pick([
       "Oof. Let's never speak of that hole again.",
-      "Big number. Forget it, next hole.",
+      "Big number. Forget it exists.",
+      "That was a disaster. Move on quickly.",
     ]);
   }
 
