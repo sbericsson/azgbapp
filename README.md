@@ -9,13 +9,14 @@ A mobile-first live scoring app for a private golf tournament spanning four roun
 - **Golfers** enter their group's PIN on arrival and immediately see their active rounds. They enter scores hole-by-hole as they play, with real-time leaderboard updates.
 - **The commissioner** uses a password-protected admin panel to set up all rounds and pairings before the tournament starts — no mid-round data entry required.
 
-The app supports three scoring formats that can be mixed across rounds:
+The app supports four scoring formats that can be mixed across rounds:
 
 | Format | How it works |
 |---|---|
 | **Wolf** | Each hole, one player is the Wolf and decides to go lone or pick a partner. Points awarded per hole based on outcome. |
 | **Best Ball** | 4-person groups; best individual score on each hole counts toward the team total. Score tracked as ± par. |
-| **Scramble** | All players hit, best shot is selected, repeat. Team records a single score per hole. Supports 2-person pairs (Sat PM) or 4-person groups. |
+| **Scramble** | All players hit, best shot is selected, repeat. Team records a single score per hole. Supports 2-person pairs or 4-person groups. |
+| **Gauntlet** | 2-person format combining three segments across 18 holes: best ball (holes 1–6), scramble (holes 7–12), and alternate shot (holes 13–18). Single team score per hole throughout. |
 
 ---
 
