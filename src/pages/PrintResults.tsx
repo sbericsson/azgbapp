@@ -191,7 +191,6 @@ export function PrintResults() {
           const { round, courseName, entries } = result;
           const isWolf = round.format === 'wolf';
           const isBestBallFmt = round.format === 'bestBall';
-          const headerPlayers = entries[0]?.group.players ?? [];
 
           return (
             <section
@@ -208,63 +207,51 @@ export function PrintResults() {
               {entries.length === 0 ? (
                 <p className="text-gray-500 text-sm">No groups.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border-collapse">
-                    <thead>
-                      <tr className="border-b border-gray-700 print:border-gray-300 text-gray-400 print:text-gray-600">
-                        <th className="text-left py-2 pr-2 w-8 font-semibold">#</th>
-                        <th className="text-left py-2 pr-4 font-semibold">Group</th>
-                        <th className="text-right py-2 pr-6 font-semibold">
-                          {isWolf ? 'Total pts' : 'Score'}
-                        </th>
-                        {(isWolf || isBestBallFmt) && headerPlayers.map((p) => (
-                          <th key={p.id} className="text-right py-2 px-2 font-semibold">
-                            {p.name.split(' ')[0]}
-                          </th>
-                        ))}
-                        {!isWolf && !isBestBallFmt && (
-                          <th className="text-left py-2 pl-4 font-semibold">Players</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {entries.map((entry, rank) => (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-700 print:border-gray-300 text-gray-400 print:text-gray-600">
+                      <th className="text-left py-2 pr-2 w-8 font-semibold">#</th>
+                      <th className="text-left py-2 font-semibold">Group</th>
+                      <th className="text-right py-2 pl-6 font-semibold">
+                        {isWolf ? 'Total pts' : 'Score'}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entries.map((entry, rank) => {
+                      const playerLine = isWolf
+                        ? (entry.playerPoints ?? []).map((pp) => `${pp.name}: ${pp.pts} pts`).join(' · ')
+                        : isBestBallFmt
+                        ? (entry.playerTotals ?? []).map((pt) => `${pt.name}: ${fmtScore(pt.total, 'bestBall')}`).join(' · ')
+                        : entry.group.players.map((p) => p.name).join(' · ');
+
+                      return (
                         <tr
                           key={entry.group.id}
                           className="border-b border-gray-800 print:border-gray-200"
                         >
-                          <td className="py-2 pr-2 text-gray-500">{rank + 1}</td>
-                          <td className="py-2 pr-4 font-medium">
-                            {entry.group.name}
+                          <td className="py-2 pr-2 text-gray-500 align-top">{rank + 1}</td>
+                          <td className="py-2 align-top">
+                            <span className="font-medium">{entry.group.name}</span>
                             {entry.holesCompleted > 0 && entry.holesCompleted < round.holes && (
                               <span className="text-gray-500 print:text-gray-400 text-xs ml-1.5">
                                 ({entry.holesCompleted}/{round.holes})
                               </span>
                             )}
+                            {playerLine && (
+                              <div className="text-gray-400 print:text-gray-500 text-xs mt-0.5">
+                                {playerLine}
+                              </div>
+                            )}
                           </td>
-                          <td className="py-2 pr-6 text-right font-bold">
+                          <td className="py-2 pl-6 text-right font-bold align-top">
                             {entry.holesCompleted === 0 ? '—' : fmtScore(entry.score, round.format)}
                           </td>
-                          {isWolf && (entry.playerPoints ?? []).map((pp) => (
-                            <td key={pp.name} className="py-2 px-2 text-right text-gray-300 print:text-gray-700">
-                              {pp.pts} pts
-                            </td>
-                          ))}
-                          {isBestBallFmt && (entry.playerTotals ?? []).map((pt) => (
-                            <td key={pt.name} className="py-2 px-2 text-right text-gray-300 print:text-gray-700">
-                              {fmtScore(pt.total, 'bestBall')}
-                            </td>
-                          ))}
-                          {!isWolf && !isBestBallFmt && (
-                            <td className="py-2 pl-4 text-gray-300 print:text-gray-700">
-                              {entry.group.players.map((p) => p.name).join(' · ')}
-                            </td>
-                          )}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
             </section>
           );
