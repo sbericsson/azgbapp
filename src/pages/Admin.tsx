@@ -495,9 +495,12 @@ export function Admin() {
           <h1 className="text-xl font-bold">Admin</h1>
           <p className="text-gray-400 text-sm">{tournament?.name}</p>
         </div>
-        <button onClick={logout} className="text-red-400 text-sm font-medium">
-          Logout
-        </button>
+        <div className="flex items-center gap-4">
+          <a href="/admin/results" className="text-gray-400 text-sm">Results</a>
+          <button onClick={logout} className="text-red-400 text-sm font-medium">
+            Logout
+          </button>
+        </div>
       </header>
 
       <div className="p-4 max-w-lg mx-auto flex flex-col gap-4">

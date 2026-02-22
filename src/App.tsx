@@ -7,6 +7,7 @@ import { Home } from './pages/Home';
 import { Scorecard } from './pages/Scorecard';
 import { Leaderboard } from './pages/Leaderboard';
 import { PublicScorecard } from './pages/PublicScorecard';
+import { PrintResults } from './pages/PrintResults';
 import { LaunchGate } from './components/LaunchGate';
 
 function Spinner() {
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="/bypass" element={<BypassRoute />} />
         <Route path="/" element={<RootRoute />} />
         <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
+        <Route path="/admin/results" element={<ProtectedAdminRoute element={<PrintResults />} />} />
         <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
         <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
         <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
