@@ -26,7 +26,7 @@ The app is built around four named rounds:
 
 - **Friday** — Wolf format, 18 holes
 - **Saturday AM** — Best Ball, 18 holes
-- **Saturday PM** — Scramble, 18 holes (2-person pairs)
+- **Saturday PM** — Gauntlet, 18 holes (2-person pairs)
 - **Sunday** — Scramble, 18 holes (4-person groups)
 
 Rounds are created by the admin and can be set to `pending`, `active`, or `complete`. Golfers only see rounds that are `active` or `complete` and that belong to their group.
