@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 interface Props {
   message: string | null;
   loading?: boolean;
+  autoDismiss?: boolean;
   onDismiss: () => void;
 }
 
-export function HoleFeedbackToast({ message, loading = false, onDismiss }: Props) {
+export function HoleFeedbackToast({ message, loading = false, autoDismiss = true, onDismiss }: Props) {
   const [visible, setVisible] = useState(false);
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
@@ -23,12 +24,12 @@ export function HoleFeedbackToast({ message, loading = false, onDismiss }: Props
     return () => clearTimeout(showTimer);
   }, [isOpen]);
 
-  // 10s auto-dismiss — only starts once message arrives
+  // 10s auto-dismiss — only starts once message arrives, and only when requested
   useEffect(() => {
-    if (!message) return;
+    if (!message || !autoDismiss) return;
     const dismissTimer = setTimeout(() => onDismissRef.current(), 10000);
     return () => clearTimeout(dismissTimer);
-  }, [message]);
+  }, [message, autoDismiss]);
 
   if (!isOpen) return null;
 

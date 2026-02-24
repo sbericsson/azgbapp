@@ -47,6 +47,7 @@ export function Scorecard() {
   const [nameInput, setNameInput] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackAutoDismiss, setFeedbackAutoDismiss] = useState(true);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
 
   const players = group?.players ?? [];
@@ -310,7 +311,8 @@ export function Scorecard() {
 
     // Generate post-lock commentary
     if (isWolfHole(locked)) {
-      // Wolf: synchronous static feedback
+      // Wolf: synchronous static feedback, auto-dismiss
+      setFeedbackAutoDismiss(true);
       setFeedbackMessage(generateWolfFeedback(locked as WolfHoleScore, players, par));
     } else {
       // bestBall / scramble / gauntlet: async AI feedback with static fallback
@@ -323,7 +325,9 @@ export function Scorecard() {
         lbEntries,
         group.name,
       );
+      let aiSucceeded = false;
       getAIFeedback(aiCtx)
+        .then((msg): string => { aiSucceeded = true; return msg; })
         .catch((): string => {
           if (isBestBallHole(locked)) {
             return generateBestBallFeedback(
@@ -341,6 +345,7 @@ export function Scorecard() {
           }
         })
         .then((msg) => {
+          setFeedbackAutoDismiss(!aiSucceeded);
           setFeedbackMessage(msg);
           setFeedbackLoading(false);
         });
@@ -576,7 +581,8 @@ export function Scorecard() {
       <HoleFeedbackToast
         message={feedbackMessage}
         loading={feedbackLoading}
-        onDismiss={() => { setFeedbackMessage(null); setFeedbackLoading(false); }}
+        autoDismiss={feedbackAutoDismiss}
+        onDismiss={() => { setFeedbackMessage(null); setFeedbackLoading(false); setFeedbackAutoDismiss(true); }}
       />
 
       {/* Group name edit modal */}
