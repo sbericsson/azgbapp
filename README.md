@@ -91,15 +91,15 @@ All rounds and pairings for the entire weekend can be entered in one session bef
 
 ## AI Commentary
 
-When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Gemma 3 1B IT API to generate a one or two sentence commentary line personalised to the moment — referencing player names, recent hole history, scoring streaks, and where the group sits on the leaderboard. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
+When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Claude Haiku API (claude-haiku-4-5) to generate a one or two sentence commentary line personalised to the moment — referencing player names, recent hole history, scoring streaks, and where the group sits on the leaderboard. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
 
-To enable AI commentary, add a Gemini API key to `.env.local`:
+To enable AI commentary, add an Anthropic API key to `.env.local`:
 
 ```
-VITE_GEMINI_API_KEY=your_gemini_key_here
+VITE_ANTHROPIC_API_KEY=your_anthropic_key_here
 ```
 
-Get a free key at [Google AI Studio](https://aistudio.google.com/). The free tier (15 RPM / 1500 RPD) is well within what 18 holes across a handful of groups requires. The key is baked into the client bundle — consistent with the app's existing security model (private tournament, permissive Firestore rules).
+Get a key at [console.anthropic.com](https://console.anthropic.com/). The key is baked into the client bundle — consistent with the app's existing security model (private tournament, permissive Firestore rules).
 
 ---
 
@@ -134,7 +134,7 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 
 # Optional — enables AI commentary for bestBall/scramble/gauntlet
-VITE_GEMINI_API_KEY=...
+VITE_ANTHROPIC_API_KEY=...
 ```
 
 ---

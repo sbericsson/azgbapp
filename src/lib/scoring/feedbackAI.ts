@@ -1,6 +1,6 @@
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemma-3-1b-it:generateContent';
+const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined;
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 const TIMEOUT_MS = 5000;
 
 export interface AIFeedbackContext {
@@ -125,31 +125,36 @@ function buildPrompt(ctx: AIFeedbackContext): string {
 }
 
 export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
-  if (!GEMINI_API_KEY) throw new Error('No Gemini API key configured');
+  if (!ANTHROPIC_API_KEY) throw new Error('No Anthropic API key configured');
 
   const prompt = buildPrompt(ctx);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+    const res = await fetch(ANTHROPIC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 100, temperature: 0.9 },
+        model: ANTHROPIC_MODEL,
+        max_tokens: 100,
+        messages: [{ role: 'user', content: prompt }],
       }),
       signal: controller.signal,
     });
 
-    if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+    if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
 
     const data = (await res.json()) as {
-      candidates?: { content: { parts: { text: string }[] } }[];
+      content?: { type: string; text: string }[];
     };
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text) throw new Error('Empty response from Gemini');
+    const text = data.content?.find((b) => b.type === 'text')?.text?.trim();
+    if (!text) throw new Error('Empty response from Anthropic');
     return text;
   } finally {
     clearTimeout(timeoutId);
