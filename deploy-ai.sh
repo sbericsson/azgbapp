@@ -14,7 +14,7 @@ REPO_DIR="/var/www/azgb"
 echo "==> Pulling latest code (azgb-app-ai)…"
 cd "$REPO_DIR"
 git fetch origin
-git checkout azgb-app-ai
+git checkout -f azgb-app-ai
 git pull origin azgb-app-ai
 
 echo "==> Installing dependencies…"
