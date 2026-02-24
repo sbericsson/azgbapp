@@ -5,7 +5,7 @@ import { useGroup } from '../hooks/useGroup';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { listRounds, getCourse, subscribeGroupsByRound } from '../lib/firestore';
 import type { Round, Group } from '../types/tournament';
-import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
+import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore, HoleScore } from '../types/scoring';
 import { HoleHeader } from '../components/scorecard/HoleHeader';
 import { HoleNav } from '../components/scorecard/HoleNav';
 import { WolfControls } from '../components/scorecard/WolfControls';
@@ -27,6 +27,9 @@ import {
   generateBestBallFeedback,
   generateScrambleFeedback,
 } from '../lib/scoring/feedback';
+import { getAIFeedback } from '../lib/scoring/feedbackAI';
+import type { AIFeedbackContext } from '../lib/scoring/feedbackAI';
+import type { LeaderboardEntry } from '../hooks/useLeaderboard';
 
 const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
 
@@ -43,6 +46,7 @@ export function Scorecard() {
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
 
   const players = group?.players ?? [];
@@ -190,6 +194,90 @@ export function Scorecard() {
     ? holes.filter((h, i) => h.locked && i <= currentHole).length
     : 0;
 
+  function buildAIContext(
+    locked: BestBallHoleScore | ScrambleHoleScore | GauntletHoleScore,
+    holeIndex: number,
+    allHoles: HoleScore[],
+    lbEntriesSnap: LeaderboardEntry[],
+    groupName: string,
+  ): AIFeedbackContext {
+    const format = round!.format as 'bestBall' | 'scramble' | 'gauntlet';
+    const roundPar = round!.par;
+
+    // All holes with the current index replaced by the locked version
+    const mergedHoles = allHoles.map((h, i) => (i === holeIndex ? locked : h));
+
+    // Per-player running totals for bestBall
+    const playerRunning = players.map((p) => {
+      let total = 0;
+      if (format === 'bestBall') {
+        for (let i = 0; i <= holeIndex; i++) {
+          const h = mergedHoles[i];
+          if (!h?.locked || !isBestBallHole(h)) continue;
+          const s = (h as BestBallHoleScore).scores.find((sc) => sc.playerId === p.id);
+          if (s && s.gross > 0) total += s.gross - (roundPar[i] ?? 4);
+        }
+      }
+      return { name: p.name, runningToPar: total };
+    });
+
+    // Helper: find the player with the best (lowest) score on a bestBall hole
+    function getBestBallLeadPlayer(bb: BestBallHoleScore): string | undefined {
+      let best: { playerId: string; gross: number } | null = null;
+      for (const s of bb.scores) {
+        if (s.gross > 0 && (!best || s.gross < best.gross)) best = s;
+      }
+      return best ? players.find((p) => p.id === best!.playerId)?.name : undefined;
+    }
+
+    // Hole history: locked holes before holeIndex, in order
+    const holeHistory: AIFeedbackContext['holeHistory'] = [];
+    for (let i = 0; i < holeIndex; i++) {
+      const h = mergedHoles[i];
+      if (!h?.locked) continue;
+      const p = roundPar[i] ?? 4;
+      if (isBestBallHole(h)) {
+        const bb = h as BestBallHoleScore;
+        holeHistory.push({ holeNum: i + 1, par: p, rel: (bb.bestScore ?? p) - p, leadPlayer: getBestBallLeadPlayer(bb) });
+      } else if (isScrambleHole(h)) {
+        holeHistory.push({ holeNum: i + 1, par: p, rel: ((h as ScrambleHoleScore).teamScore ?? p) - p });
+      } else if (isGauntletHole(h)) {
+        holeHistory.push({ holeNum: i + 1, par: p, rel: ((h as GauntletHoleScore).teamScore ?? p) - p });
+      }
+    }
+
+    // Current hole result
+    const curPar = roundPar[holeIndex] ?? 4;
+    let currentHoleCtx: AIFeedbackContext['currentHole'];
+    if (isBestBallHole(locked)) {
+      const bb = locked as BestBallHoleScore;
+      currentHoleCtx = { holeNum: holeIndex + 1, par: curPar, rel: (bb.bestScore ?? curPar) - curPar, leadPlayer: getBestBallLeadPlayer(bb) };
+    } else if (isScrambleHole(locked)) {
+      currentHoleCtx = { holeNum: holeIndex + 1, par: curPar, rel: ((locked as ScrambleHoleScore).teamScore ?? curPar) - curPar };
+    } else {
+      currentHoleCtx = { holeNum: holeIndex + 1, par: curPar, rel: ((locked as GauntletHoleScore).teamScore ?? curPar) - curPar };
+    }
+
+    // Team running total through holeIndex
+    let runningTotal = 0;
+    for (let i = 0; i <= holeIndex; i++) {
+      const h = mergedHoles[i];
+      if (!h?.locked) continue;
+      const p = roundPar[i] ?? 4;
+      if (isBestBallHole(h)) runningTotal += ((h as BestBallHoleScore).bestScore ?? p) - p;
+      else if (isScrambleHole(h)) runningTotal += ((h as ScrambleHoleScore).teamScore ?? p) - p;
+      else if (isGauntletHole(h)) runningTotal += ((h as GauntletHoleScore).teamScore ?? p) - p;
+    }
+
+    const leaderboard = lbEntriesSnap.map((e) => ({
+      groupName: e.groupName,
+      score: e.score,
+      holesPlayed: e.holesCompleted,
+    }));
+
+    return { format, roundName: round!.name, players: playerRunning, holeHistory, currentHole: currentHoleCtx, runningTotal, rank: rankForFeedback, totalGroups: allGroups.length, leaderboard, ourGroupName: groupName };
+  }
+
   const handleLockHole = async () => {
     if (!hole) return;
     if (isWolfHole(hole)) {
@@ -221,24 +309,42 @@ export function Scorecard() {
     await saveHole(currentHole, locked);
 
     // Generate post-lock commentary
-    let msg: string | null = null;
     if (isWolfHole(locked)) {
-      msg = generateWolfFeedback(locked as WolfHoleScore, players, par);
-    } else if (isBestBallHole(locked)) {
-      msg = generateBestBallFeedback(
-        locked as BestBallHoleScore, par, rankForFeedback, allGroups.length, currentHole,
+      // Wolf: synchronous static feedback
+      setFeedbackMessage(generateWolfFeedback(locked as WolfHoleScore, players, par));
+    } else {
+      // bestBall / scramble / gauntlet: async AI feedback with static fallback
+      setFeedbackLoading(true);
+      setFeedbackMessage(null);
+      const aiCtx = buildAIContext(
+        locked as BestBallHoleScore | ScrambleHoleScore | GauntletHoleScore,
+        currentHole,
+        holes,
+        lbEntries,
+        group.name,
       );
-    } else if (isScrambleHole(locked)) {
-      msg = generateScrambleFeedback(
-        locked as ScrambleHoleScore, par, rankForFeedback, allGroups.length, currentHole,
-      );
-    } else if (isGauntletHole(locked)) {
-      msg = generateScrambleFeedback(
-        { teamScore: (locked as GauntletHoleScore).teamScore, locked: true },
-        par, rankForFeedback, allGroups.length, currentHole,
-      );
+      getAIFeedback(aiCtx)
+        .catch((): string => {
+          if (isBestBallHole(locked)) {
+            return generateBestBallFeedback(
+              locked as BestBallHoleScore, par, rankForFeedback, allGroups.length, currentHole,
+            );
+          } else if (isScrambleHole(locked)) {
+            return generateScrambleFeedback(
+              locked as ScrambleHoleScore, par, rankForFeedback, allGroups.length, currentHole,
+            );
+          } else {
+            return generateScrambleFeedback(
+              { teamScore: (locked as GauntletHoleScore).teamScore, locked: true },
+              par, rankForFeedback, allGroups.length, currentHole,
+            );
+          }
+        })
+        .then((msg) => {
+          setFeedbackMessage(msg);
+          setFeedbackLoading(false);
+        });
     }
-    setFeedbackMessage(msg);
     setShowLockConfirm(false);
     // Delay auto-advance 1.5 s so users can read the toast
     if (currentHole < round.holes - 1) {
@@ -469,7 +575,8 @@ export function Scorecard() {
 
       <HoleFeedbackToast
         message={feedbackMessage}
-        onDismiss={() => setFeedbackMessage(null)}
+        loading={feedbackLoading}
+        onDismiss={() => { setFeedbackMessage(null); setFeedbackLoading(false); }}
       />
 
       {/* Group name edit modal */}
