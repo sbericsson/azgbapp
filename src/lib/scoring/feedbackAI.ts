@@ -111,9 +111,15 @@ function buildPrompt(ctx: AIFeedbackContext): string {
   parts.push(
     'Write ONE punchy commentary line (max 2 sentences). Dry, brutally honest, golf-savvy tone.',
   );
-  parts.push(
-    "Reference a player by first name if relevant. No asterisks, no bullet points, don't start with \"Ah\" or \"Well\".",
-  );
+  if (ctx.format === 'bestBall') {
+    parts.push(
+      "You can reference a player by first name if their running total makes it relevant (e.g. one player carrying the team or struggling). No asterisks, no bullet points, don't start with \"Ah\" or \"Well\".",
+    );
+  } else {
+    parts.push(
+      "Do not reference any player by name — the team acts as one unit in this format. No asterisks, no bullet points, don't start with \"Ah\" or \"Well\".",
+    );
+  }
 
   return parts.join('\n');
 }
