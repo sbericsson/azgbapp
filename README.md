@@ -91,7 +91,7 @@ All rounds and pairings for the entire weekend can be entered in one session bef
 
 ## AI Commentary
 
-When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Gemini 2.5 Flash-Lite API to generate a one or two sentence commentary line personalised to the moment — referencing player names, recent hole history, scoring streaks, and where the group sits on the leaderboard. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
+When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Gemma 3 1B IT API to generate a one or two sentence commentary line personalised to the moment — referencing player names, recent hole history, scoring streaks, and where the group sits on the leaderboard. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
 
 To enable AI commentary, add a Gemini API key to `.env.local`:
 
