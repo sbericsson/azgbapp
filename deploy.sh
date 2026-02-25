@@ -13,7 +13,8 @@ REPO_DIR="/var/www/azgb"
 
 echo "==> Pulling latest code…"
 cd "$REPO_DIR"
-git pull origin main
+git fetch origin
+git reset --hard origin/main
 
 echo "==> Installing dependencies…"
 # Use --include=dev so devDependencies (TypeScript, Vite, Tailwind) are available for the build
