@@ -142,7 +142,11 @@ export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
       signal: controller.signal,
     });
 
-    if (!res.ok) throw new Error(`AI proxy error: ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('AI proxy error body:', body);
+      throw new Error(`AI proxy error: ${res.status}`);
+    }
 
     const data = (await res.json()) as {
       content?: { type: string; text: string }[];
