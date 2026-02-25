@@ -1,5 +1,4 @@
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined;
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_URL = '/api/ai/messages'; // proxied via nginx — key lives in nginx config
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 const TIMEOUT_MS = 5000;
 
@@ -125,8 +124,6 @@ function buildPrompt(ctx: AIFeedbackContext): string {
 }
 
 export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
-  if (!ANTHROPIC_API_KEY) throw new Error('No Anthropic API key configured');
-
   const prompt = buildPrompt(ctx);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -136,8 +133,6 @@ export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
@@ -147,7 +142,7 @@ export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
       signal: controller.signal,
     });
 
-    if (!res.ok) throw new Error(`Anthropic API error: ${res.status}`);
+    if (!res.ok) throw new Error(`AI proxy error: ${res.status}`);
 
     const data = (await res.json()) as {
       content?: { type: string; text: string }[];
