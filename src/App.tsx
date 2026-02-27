@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthContext, useAuthProvider } from './hooks/useAuth';
 import { Login } from './pages/Login';
 import { Admin } from './pages/Admin';
+import { AppAdmin } from './pages/AppAdmin';
 import { Home } from './pages/Home';
 import { Scorecard } from './pages/Scorecard';
 import { Leaderboard } from './pages/Leaderboard';
@@ -18,13 +19,21 @@ function Spinner() {
   );
 }
 
-/** Root: Login when not auth'd; redirect admin → /admin; group → Home */
+/** Root: Login when not auth'd; redirect by role */
 function RootRoute() {
-  const { group, isAdmin, loading } = useContext(AuthContext);
+  const { group, isAdmin, isAppAdmin, loading } = useContext(AuthContext);
   if (loading) return <Spinner />;
+  if (isAppAdmin && !isAdmin) return <Navigate to="/app-admin" replace />;
   if (isAdmin) return <Navigate to="/admin" replace />;
   if (group) return <Home />;
   return <Login />;
+}
+
+function ProtectedAppAdminRoute({ element }: { element: ReactElement }) {
+  const { isAppAdmin, loading } = useContext(AuthContext);
+  if (loading) return <Spinner />;
+  if (!isAppAdmin) return <Navigate to="/" replace />;
+  return element;
 }
 
 function ProtectedGroupRoute({ element }: { element: ReactElement }) {
@@ -55,6 +64,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/bypass" element={<BypassRoute />} />
         <Route path="/" element={<RootRoute />} />
+        <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />
         <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
         <Route path="/admin/results" element={<ProtectedAdminRoute element={<PrintResults />} />} />
         <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />

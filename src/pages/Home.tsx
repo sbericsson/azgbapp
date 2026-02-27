@@ -4,8 +4,6 @@ import { AuthContext } from '../hooks/useAuth';
 import { listRounds, listCourses } from '../lib/firestore';
 import type { Round, Course } from '../types/tournament';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 const dayOrder: Round['day'][] = ['friday', 'saturday_am', 'saturday_pm', 'sunday'];
 const dayLabel: Record<Round['day'], string> = {
   friday: 'Friday',
@@ -21,14 +19,15 @@ const formatLabel: Record<string, string> = {
 };
 
 export function Home() {
-  const { group, logout } = useContext(AuthContext);
+  const { group, logout, tournamentId } = useContext(AuthContext);
   const navigate = useNavigate();
   const [rounds, setRounds] = useState<Round[]>([]);
   const [courseMap, setCourseMap] = useState<Map<string, Course>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([listRounds(TOURNAMENT_ID), listCourses(TOURNAMENT_ID)])
+    if (!tournamentId) return;
+    Promise.all([listRounds(tournamentId), listCourses(tournamentId)])
       .then(([allRounds, allCourses]) => {
         const myRounds = allRounds.filter((r) => {
           if (r.status === 'pending') return false;
@@ -39,7 +38,7 @@ export function Home() {
         setCourseMap(new Map(allCourses.map((c) => [c.id, c])));
       })
       .finally(() => setLoading(false));
-  }, [group?.id]);
+  }, [group?.id, tournamentId]);
 
   const byDay = dayOrder.reduce<Record<string, Round[]>>((acc, day) => {
     const dayRounds = rounds.filter((r) => r.day === day);

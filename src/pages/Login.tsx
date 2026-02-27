@@ -2,11 +2,10 @@ import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 export function Login() {
-  const { loginAsGroup, loginAsAdmin } = useContext(AuthContext);
+  const { loginAsGroup, loginAsAdmin, loginAsAppAdmin } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [tournamentCode, setTournamentCode] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,17 +21,30 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      const isAdmin = await loginAsAdmin(TOURNAMENT_ID, pinValue);
+      const code = tournamentCode.trim().toLowerCase();
+
+      if (!code) {
+        // App admin: blank tournament code
+        const ok = await loginAsAppAdmin(pinValue);
+        if (ok) {
+          navigate('/app-admin');
+          return;
+        }
+        setError('Invalid master PIN.');
+        return;
+      }
+
+      const isAdmin = await loginAsAdmin(code, pinValue);
       if (isAdmin) {
         navigate('/admin');
         return;
       }
-      const isGroup = await loginAsGroup(TOURNAMENT_ID, pinValue);
+      const isGroup = await loginAsGroup(code, pinValue);
       if (isGroup) {
         navigate('/');
         return;
       }
-      setError('Invalid PIN. Check with your group.');
+      setError('Invalid tournament code or PIN. Check with your group.');
     } catch (err) {
       console.error('Login error:', err);
       setError('Connection error. Please try again.');
@@ -60,7 +72,24 @@ export function Login() {
             <img src="/azgb-logo.png" alt="AZ Golf Bender" className="w-44 h-auto" />
           </div>
         </div>
-        <p className="text-gray-400 mt-1 text-center mb-8">Enter your group PIN</p>
+
+        {/* Tournament code */}
+        <div className="mb-5">
+          <input
+            type="text"
+            className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white text-center
+                       text-lg placeholder-gray-600 border-2 border-gray-700
+                       focus:border-green-500 focus:outline-none tracking-widest"
+            placeholder="Tournament code"
+            value={tournamentCode}
+            onChange={(e) => { setTournamentCode(e.target.value); setError(''); }}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </div>
+
+        <p className="text-gray-400 text-center mb-4 text-sm">Enter your group PIN</p>
 
         {/* PIN display */}
         <div className="flex justify-center gap-3 mb-6">

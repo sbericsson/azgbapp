@@ -12,7 +12,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import type { Tournament, Group, Golfer, Course, Round } from '../types/tournament';
+import type { Tournament, Group, Golfer, Course, Round, AppConfig } from '../types/tournament';
 import type { GroupScoreDoc, HoleScore } from '../types/scoring';
 
 // ── Tournaments ────────────────────────────────────────────────────────────────
@@ -33,6 +33,18 @@ export async function getTournament(id: string): Promise<Tournament | null> {
 export async function listTournaments(): Promise<Tournament[]> {
   const snap = await getDocs(collection(db, 'tournaments'));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament);
+}
+
+export async function deleteTournament(id: string): Promise<void> {
+  await deleteDoc(doc(db, 'tournaments', id));
+}
+
+// ── App Config ─────────────────────────────────────────────────────────────────
+
+export async function getAppConfig(): Promise<AppConfig | null> {
+  const snap = await getDoc(doc(db, 'config', 'app'));
+  if (!snap.exists()) return null;
+  return snap.data() as AppConfig;
 }
 
 // ── Courses ────────────────────────────────────────────────────────────────────

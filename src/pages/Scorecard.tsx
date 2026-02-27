@@ -31,12 +31,10 @@ import { getAIFeedback } from '../lib/scoring/feedbackAI';
 import type { AIFeedbackContext } from '../lib/scoring/feedbackAI';
 import type { LeaderboardEntry } from '../hooks/useLeaderboard';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 export function Scorecard() {
   const { roundId } = useParams<{ roundId: string }>();
   const navigate = useNavigate();
-  const { group, updateGroupName } = useContext(AuthContext);
+  const { group, updateGroupName, tournamentId } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
   const [courseName, setCourseName] = useState<string | undefined>();
@@ -53,22 +51,22 @@ export function Scorecard() {
   const players = group?.players ?? [];
   const hasJumpedToCurrentHole = useRef(false);
   const { holes, loading, saving, saveError, saveHole, setLocalHole } = useGroup(
-    TOURNAMENT_ID,
+    tournamentId,
     round,
     group?.id ?? null,
     players,
   );
 
   useEffect(() => {
-    if (!roundId) return;
-    listRounds(TOURNAMENT_ID).then((all) => {
+    if (!roundId || !tournamentId) return;
+    listRounds(tournamentId).then((all) => {
       const r = all.find((r) => r.id === roundId) ?? null;
       setRound(r);
       if (r?.courseId) {
-        getCourse(TOURNAMENT_ID, r.courseId).then((c) => setCourseName(c?.name));
+        getCourse(tournamentId, r.courseId).then((c) => setCourseName(c?.name));
       }
     });
-  }, [roundId]);
+  }, [roundId, tournamentId]);
 
   // On first load, jump to the first unlocked hole so returning players land on their active hole
   useEffect(() => {
@@ -91,12 +89,12 @@ export function Scorecard() {
 
   // Subscribe to all groups in this round (for leaderboard rank — bestBall/scramble only)
   useEffect(() => {
-    if (!roundId || !round || round.format === 'wolf') return;
-    return subscribeGroupsByRound(TOURNAMENT_ID, roundId, setAllGroups);
-  }, [roundId, round?.id, round?.format]);
+    if (!roundId || !round || round.format === 'wolf' || !tournamentId) return;
+    return subscribeGroupsByRound(tournamentId, roundId, setAllGroups);
+  }, [roundId, round?.id, round?.format, tournamentId]);
 
   const leaderboardRound = round?.format !== 'wolf' ? round : null;
-  const { entries: lbEntries } = useLeaderboard(TOURNAMENT_ID, leaderboardRound, allGroups);
+  const { entries: lbEntries } = useLeaderboard(tournamentId, leaderboardRound, allGroups);
 
   const myRank = group && lbEntries.length > 0
     ? lbEntries.findIndex((e) => e.groupId === group.id) + 1

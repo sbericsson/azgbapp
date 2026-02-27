@@ -7,12 +7,10 @@ import type { Round, Group } from '../types/tournament';
 import { WolfLeaderboard } from '../components/leaderboard/WolfLeaderboard';
 import { TeamLeaderboard } from '../components/leaderboard/TeamLeaderboard';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 export function Leaderboard() {
   const { roundId } = useParams<{ roundId: string }>();
   const navigate = useNavigate();
-  const { group } = useContext(AuthContext);
+  const { group, tournamentId } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -20,23 +18,23 @@ export function Leaderboard() {
 
   // Load round once
   useEffect(() => {
-    if (!roundId) return;
-    listRounds(TOURNAMENT_ID).then((all) => {
+    if (!roundId || !tournamentId) return;
+    listRounds(tournamentId).then((all) => {
       const r = all.find((r) => r.id === roundId) ?? null;
       setRound(r);
       if (r?.courseId) {
-        getCourse(TOURNAMENT_ID, r.courseId).then((c) => setCourseName(c?.name));
+        getCourse(tournamentId, r.courseId).then((c) => setCourseName(c?.name));
       }
     });
-  }, [roundId]);
+  }, [roundId, tournamentId]);
 
   // Subscribe to groups for real-time name updates
   useEffect(() => {
-    if (!roundId) return;
-    return subscribeGroupsByRound(TOURNAMENT_ID, roundId, setGroups);
-  }, [roundId]);
+    if (!roundId || !tournamentId) return;
+    return subscribeGroupsByRound(tournamentId, roundId, setGroups);
+  }, [roundId, tournamentId]);
 
-  const { entries, loading } = useLeaderboard(TOURNAMENT_ID, round, groups);
+  const { entries, loading } = useLeaderboard(tournamentId, round, groups);
 
   const handleGroupClick = (groupId: string) => {
     if (roundId) navigate(`/scorecard/${roundId}/${groupId}`);

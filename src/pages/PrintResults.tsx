@@ -13,8 +13,6 @@ import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
 import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 const DAY_ORDER: Record<string, number> = {
   friday: 0,
   saturday_am: 1,
@@ -95,7 +93,7 @@ function computeRoundEntries(
 }
 
 export function PrintResults() {
-  const { tournament } = useContext(AuthContext);
+  const { tournament, tournamentId } = useContext(AuthContext);
   const [results, setResults] = useState<RoundResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -105,9 +103,10 @@ export function PrintResults() {
     setLoading(true);
 
     (async () => {
+      if (!tournamentId) { setLoading(false); return; }
       const [rounds, courses] = await Promise.all([
-        listRounds(TOURNAMENT_ID),
-        listCourses(TOURNAMENT_ID),
+        listRounds(tournamentId),
+        listCourses(tournamentId),
       ]);
 
       const courseMap = Object.fromEntries(courses.map((c) => [c.id, c.name]));
@@ -118,8 +117,8 @@ export function PrintResults() {
       const roundResults: RoundResult[] = await Promise.all(
         sorted.map(async (round) => {
           const [groups, scoreDocs] = await Promise.all([
-            listGroupsByRound(TOURNAMENT_ID, round.id),
-            listAllScores(TOURNAMENT_ID, round.id),
+            listGroupsByRound(tournamentId, round.id),
+            listAllScores(tournamentId, round.id),
           ]);
 
           const entries = computeRoundEntries(round, groups, scoreDocs);
@@ -142,7 +141,7 @@ export function PrintResults() {
     })();
 
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, tournamentId]);
 
   const dayLabel = (day: string) => {
     if (day === 'saturday_am') return 'Saturday AM';

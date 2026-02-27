@@ -43,3 +43,7 @@ export interface Tournament {
   adminPin: string;
   createdAt: number;
 }
+
+export interface AppConfig {
+  appAdminPin: string;
+}

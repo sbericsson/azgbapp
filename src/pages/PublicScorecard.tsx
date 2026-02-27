@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { AuthContext } from '../hooks/useAuth';
 import { getGroupById, listRounds } from '../lib/firestore';
 import { useGroup } from '../hooks/useGroup';
 import type { Round, Group } from '../types/tournament';
@@ -10,30 +11,29 @@ import { isScrambleHole } from '../lib/scoring/scramble';
 import { isGauntletHole } from '../lib/scoring/gauntlet';
 import { WolfHoleResult } from '../components/scorecard/WolfHoleResult';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 export function PublicScorecard() {
   const { roundId, groupId } = useParams<{ roundId: string; groupId: string }>();
   const navigate = useNavigate();
+  const { tournamentId } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
   const [metaLoading, setMetaLoading] = useState(true);
 
   useEffect(() => {
-    if (!roundId || !groupId) return;
+    if (!roundId || !groupId || !tournamentId) return;
     Promise.all([
-      listRounds(TOURNAMENT_ID),
-      getGroupById(TOURNAMENT_ID, groupId),
+      listRounds(tournamentId),
+      getGroupById(tournamentId, groupId),
     ]).then(([rounds, grp]) => {
       setRound(rounds.find((r) => r.id === roundId) ?? null);
       setGroup(grp);
       setMetaLoading(false);
     });
-  }, [roundId, groupId]);
+  }, [roundId, groupId, tournamentId]);
 
   const players = group?.players ?? [];
-  const { holes, loading } = useGroup(TOURNAMENT_ID, round, groupId ?? null, players);
+  const { holes, loading } = useGroup(tournamentId, round, groupId ?? null, players);
 
   const wolfHoles = round?.format === 'wolf'
     ? (holes as WolfHoleScore[]).filter((h) => h.locked)

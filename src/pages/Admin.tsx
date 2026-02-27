@@ -16,8 +16,6 @@ import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 import { nanoid } from '../lib/nanoid';
 
-const TOURNAMENT_ID = import.meta.env.VITE_TOURNAMENT_ID ?? 'default';
-
 interface GroupSummary {
   groupId: string;
   score: number;
@@ -120,7 +118,9 @@ function ParEditor({
 // ── Admin page ────────────────────────────────────────────────────────────────
 
 export function Admin() {
-  const { tournament, logout } = useContext(AuthContext);
+  const { tournament, logout, tournamentId, isAppAdmin } = useContext(AuthContext);
+  // tournamentId is always set by the time Admin renders (route guard + loginAsAdmin/enterTournamentAsAdmin)
+  const tId = tournamentId ?? '';
 
   // Roster
   const [golfers, setGolfers] = useState<Golfer[]>([]);
@@ -174,14 +174,15 @@ export function Admin() {
   const [rEditSaving, setREditSaving] = useState(false);
 
   useEffect(() => {
-    listGolfers(TOURNAMENT_ID).then((gs) =>
+    if (!tId) return;
+    listGolfers(tId).then((gs) =>
       setGolfers(gs.sort((a, b) => a.name.localeCompare(b.name))),
     );
-    listCourses(TOURNAMENT_ID).then((cs) =>
+    listCourses(tId).then((cs) =>
       setCourses(cs.sort((a, b) => a.name.localeCompare(b.name))),
     );
-    listRounds(TOURNAMENT_ID).then(setRounds);
-  }, []);
+    listRounds(tId).then(setRounds);
+  }, [tId]);
 
   // ── Roster ────────────────────────────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ export function Admin() {
     if (!name) return;
     setGolferSaving(true);
     const id = nanoid();
-    await createGolfer(TOURNAMENT_ID, id, { name });
+    await createGolfer(tId, id, { name });
     setGolfers((gs) =>
       [...gs, { id, name }].sort((a, b) => a.name.localeCompare(b.name)),
     );
@@ -199,7 +200,7 @@ export function Admin() {
   };
 
   const removeGolfer = async (id: string) => {
-    await deleteGolfer(TOURNAMENT_ID, id);
+    await deleteGolfer(tId, id);
     setGolfers((gs) => gs.filter((g) => g.id !== id));
   };
 
@@ -241,7 +242,7 @@ export function Admin() {
     setCSaving(true);
     const par = cPar.slice(0, cHoles);
     const id = nanoid();
-    await createCourse(TOURNAMENT_ID, id, { name: cName.trim(), holes: cHoles, par });
+    await createCourse(tId, id, { name: cName.trim(), holes: cHoles, par });
     const course: Course = { id, name: cName.trim(), holes: cHoles, par };
     setCourses((cs) => [...cs, course].sort((a, b) => a.name.localeCompare(b.name)));
     setAddingCourse(false);
@@ -252,7 +253,7 @@ export function Admin() {
     if (!cName.trim()) return;
     setCSaving(true);
     const par = cPar.slice(0, cHoles);
-    await updateCourse(TOURNAMENT_ID, courseId, { name: cName.trim(), holes: cHoles, par });
+    await updateCourse(tId, courseId, { name: cName.trim(), holes: cHoles, par });
     setCourses((cs) =>
       cs
         .map((c) =>
@@ -265,7 +266,7 @@ export function Admin() {
   };
 
   const removeCourse = async (id: string) => {
-    await deleteCourse(TOURNAMENT_ID, id);
+    await deleteCourse(tId, id);
     setCourses((cs) => cs.filter((c) => c.id !== id));
     if (rCourseId === id) {
       setRCourseId('');
@@ -310,8 +311,8 @@ export function Admin() {
     setAddingGroupToRound(null);
     setEditingGroupId(null);
     const [grps, scoreDocs] = await Promise.all([
-      listGroupsByRound(TOURNAMENT_ID, roundId),
-      listAllScores(TOURNAMENT_ID, roundId),
+      listGroupsByRound(tId, roundId),
+      listAllScores(tId, roundId),
     ]);
     setGroupsByRound((prev) => ({ ...prev, [roundId]: grps }));
     setScoresByRound((prev) => ({ ...prev, [roundId]: scoreDocs }));
@@ -346,7 +347,7 @@ export function Admin() {
         id: group.players[i]?.id ?? nanoid(),
         name: name.trim(),
       }));
-    await updateGroup(TOURNAMENT_ID, group.id, {
+    await updateGroup(tId, group.id, {
       name: gName.trim(),
       pin: gPin.trim(),
       players,
@@ -368,7 +369,7 @@ export function Admin() {
       .filter((n) => n.trim())
       .map((name) => ({ id: nanoid(), name: name.trim() }));
     const id = nanoid();
-    await createGroup(TOURNAMENT_ID, id, {
+    await createGroup(tId, id, {
       name: gName.trim(),
       pin: gPin.trim(),
       players,
@@ -384,7 +385,7 @@ export function Admin() {
   };
 
   const removeGroup = async (roundId: string, groupId: string) => {
-    await deleteGroup(TOURNAMENT_ID, groupId);
+    await deleteGroup(tId, groupId);
     setGroupsByRound((prev) => ({
       ...prev,
       [roundId]: (prev[roundId] ?? []).filter((g) => g.id !== groupId),
@@ -408,7 +409,7 @@ export function Admin() {
       par,
       ...(rCourseId ? { courseId: rCourseId } : {}),
     };
-    await createRound(TOURNAMENT_ID, id, {
+    await createRound(tId, id, {
       name: round.name,
       day: round.day,
       format: round.format,
@@ -427,7 +428,7 @@ export function Admin() {
   };
 
   const removeRound = async (id: string) => {
-    await deleteRound(TOURNAMENT_ID, id);
+    await deleteRound(tId, id);
     setRounds((rs) => rs.filter((r) => r.id !== id));
     if (expandedRound === id) setExpandedRound(null);
   };
@@ -439,9 +440,9 @@ export function Admin() {
         : round.status === 'active'
           ? 'complete'
           : 'pending';
-    await updateRound(TOURNAMENT_ID, round.id, { status: next });
+    await updateRound(tId, round.id, { status: next });
     if (round.status === 'complete' && next === 'pending') {
-      await clearRoundScores(TOURNAMENT_ID, round.id);
+      await clearRoundScores(tId, round.id);
       setScoresByRound((s) => ({ ...s, [round.id]: [] }));
     }
     setRounds((rs) => rs.map((r) => (r.id === round.id ? { ...r, status: next } : r)));
@@ -452,11 +453,11 @@ export function Admin() {
     setREditSaving(true);
     const currentRound = rounds.find((r) => r.id === editingRoundFieldId);
     const data: Partial<Omit<Round, 'id'>> = { format: rEditFormat, courseId: rEditCourseId || undefined };
-    await updateRound(TOURNAMENT_ID, editingRoundFieldId, data);
+    await updateRound(tId, editingRoundFieldId, data);
     // If the format changed, old score docs have the wrong hole structure — clear them
     // so useGroup rebuilds fresh holes for the new format on next load.
     if (currentRound && currentRound.format !== rEditFormat) {
-      await clearRoundScores(TOURNAMENT_ID, editingRoundFieldId);
+      await clearRoundScores(tId, editingRoundFieldId);
       setScoresByRound((s) => ({ ...s, [editingRoundFieldId]: [] }));
     }
     setRounds((rs) => rs.map((r) => r.id === editingRoundFieldId ? { ...r, ...data } : r));
@@ -496,6 +497,9 @@ export function Admin() {
           <p className="text-gray-400 text-sm">{tournament?.name}</p>
         </div>
         <div className="flex items-center gap-4">
+          {isAppAdmin && (
+            <a href="/app-admin" className="text-blue-400 text-sm">All Tournaments</a>
+          )}
           <a href="/admin/results" className="text-gray-400 text-sm">Results</a>
           <button onClick={logout} className="text-red-400 text-sm font-medium">
             Logout
