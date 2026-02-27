@@ -14,7 +14,11 @@ REPO_DIR="/var/www/azgb"
 echo "==> Pulling latest code…"
 cd "$REPO_DIR"
 git fetch origin
+PREV_HEAD=$(git rev-parse HEAD)
 git reset --hard origin/main
+echo ""
+git diff --stat "$PREV_HEAD" HEAD
+echo ""
 
 echo "==> Installing dependencies…"
 # Use --include=dev so devDependencies (TypeScript, Vite, Tailwind) are available for the build
