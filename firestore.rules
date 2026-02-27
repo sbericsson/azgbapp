@@ -5,6 +5,11 @@ service cloud.firestore {
     // Tournament documents are readable by anyone; writable only from admin
     // (we do PIN-only auth, so we keep rules permissive for client-side logic)
     // For production you should tighten these with Firebase App Check or Auth
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     match /tournaments/{tournamentId} {
       allow read: if true;
       allow write: if true;
