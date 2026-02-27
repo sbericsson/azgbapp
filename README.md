@@ -1,13 +1,14 @@
 # AZGB Golf Tournament App
 
-A mobile-first live scoring app for a private golf tournament spanning four rounds over a weekend. Built specifically for the AZGB crew — no accounts, no app store, just a PIN and a phone.
+A mobile-first live scoring app for golf tournaments. One deployment serves multiple independent tournaments. No accounts, no app store — just a tournament code, a PIN, and a phone.
 
 ---
 
 ## What It Does
 
-- **Golfers** enter their group's PIN on arrival and immediately see their active rounds. They enter scores hole-by-hole as they play, with real-time leaderboard updates.
-- **The commissioner** uses a password-protected admin panel to set up all rounds and pairings before the tournament starts — no mid-round data entry required.
+- **Golfers** enter their tournament code and group PIN on arrival and immediately see their active rounds. They enter scores hole-by-hole as they play, with real-time leaderboard updates.
+- **Tournament admins** use a PIN-protected admin panel to set up rounds and pairings before the tournament starts — no mid-round data entry required.
+- **The app admin** can create and manage multiple tournaments from a single master panel.
 
 The app supports four scoring formats that can be mixed across rounds:
 
@@ -20,16 +21,53 @@ The app supports four scoring formats that can be mixed across rounds:
 
 ---
 
-## AZGB Structure
+## Roles
 
-The app is built around four named rounds:
+There are three access levels, all PIN-based:
 
-- **Friday** — Wolf format, 18 holes
-- **Saturday AM** — Best Ball, 18 holes
-- **Saturday PM** — Gauntlet, 18 holes (2-person pairs)
-- **Sunday** — Scramble, 18 holes (4-person groups)
+| Role | Login | Access |
+|---|---|---|
+| **App admin** | Leave tournament code blank, enter master PIN | Create/manage all tournaments at `/app-admin` |
+| **Tournament admin** | Tournament code + admin PIN | Manage rounds, pairings, golfers, courses for their tournament |
+| **Group / golfer** | Tournament code + 4-digit group PIN | Scorecard entry and leaderboard for their round |
 
-Rounds are created by the admin and can be set to `pending`, `active`, or `complete`. Golfers only see rounds that are `active` or `complete` and that belong to their group.
+---
+
+## Setting Up a New Tournament
+
+1. Log in as app admin (blank code + master PIN) → `/app-admin`
+2. Tap **+ New Tournament** and fill in:
+   - **Name** — e.g. "Bandon Dunes 2026"
+   - **Code** — short slug golfers will type at login, e.g. `bandon2026`
+   - **Admin PIN** — the PIN you'll give the tournament organiser
+3. Tap **Create Tournament**
+4. Hand the tournament code and admin PIN to the organiser. They log in and manage everything from there.
+
+---
+
+## Tournament Admin Workflow
+
+1. Log in with the tournament code + admin PIN → `/admin`
+2. **Build the golfer roster** — expand the Golfer Roster section and add every participant's name once. These names auto-complete in all player slots when building pairings.
+3. **Add golf courses** — expand the Golf Courses section and add each course by name. Tap each hole to cycle its par (3 / 4 / 5); total par updates live. Courses can be edited or deleted at any time.
+4. **Create rounds** — name, day, format, and hole count for each round. Select a course from the dropdown to pre-fill the per-hole par values, or set them manually.
+5. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For 2-person formats, fill just 2 of the 4 player slots.
+6. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline.
+7. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
+8. After the round finishes, flip it to `complete`.
+
+Share the **tournament code** and each group's **PIN** with players before they arrive. Both are shown on every pairing card.
+
+---
+
+## Golfer Workflow
+
+1. Open the URL on their phone (no app install needed — works as a PWA).
+2. Enter the **tournament code** and their **group PIN**.
+3. See their active rounds on the home screen.
+4. Tap a round → hole-by-hole scorecard.
+5. For Wolf: the Wolf rotates automatically each hole. Select the Wolf's decision and enter all four scores before locking.
+6. Lock each hole as they finish. Tap the leaderboard icon to see live standings.
 
 ---
 
@@ -47,45 +85,22 @@ Rounds are created by the admin and can be set to `pending`, `active`, or `compl
 ### Data Model
 
 ```
-tournaments/{tournamentId}
-  rounds/{roundId}          ← name, format, day, status, holes, par[], courseId?
-    scores/{groupId}        ← holes[], updatedAt (live score doc)
-  groups/{groupId}          ← name, pin, players[], roundId
-  golfers/{golferId}        ← name (master roster for admin autocomplete)
-  courses/{courseId}        ← name, holes, par[]
+config/app                    ← app admin PIN (single document)
+
+tournaments/{tournamentId}    ← tournamentId = the login code
+  adminPin, name, createdAt
+  rounds/{roundId}            ← name, format, day, status, holes, par[], courseId?
+    scores/{groupId}          ← holes[], updatedAt (live score doc)
+  groups/{groupId}            ← name, pin, players[], roundId
+  golfers/{golferId}          ← name (master roster for admin autocomplete)
+  courses/{courseId}          ← name, holes, par[]
 ```
 
-Groups self-identify their round via `roundId`. A group belongs to exactly one round, which makes pairings independent per round (different foursomes Friday vs. Saturday AM, 2-person pairs Saturday PM, etc.).
+The tournament document ID is the login code (e.g. `azgb2026`), so Firestore lookups are direct — no index query needed at login.
 
 ### Session Handling
 
-No login infrastructure. Session state is stored in `sessionStorage` — closing the tab clears the session; refreshing restores it via a single Firestore read. Admin session is separate and also PIN-protected.
-
----
-
-## Admin Workflow
-
-1. Open the app, enter the admin PIN at the tournament ID prompt.
-2. **Build the golfer roster** — expand the Golfer Roster section and add every participant's name once. These names auto-complete in all player slots when building pairings.
-3. **Add golf courses** — expand the Golf Courses section and add each course by name. Tap each hole to cycle its par (3 / 4 / 5); total par updates live. Courses can be edited or deleted at any time.
-4. **Create rounds** — name, day, format, and hole count for each of the four rounds. Select a course from the dropdown to pre-fill the per-hole par values, or set them manually. Par values can be adjusted per-hole even after a course is selected.
-5. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For Sat PM scramble pairs, fill just 2 of the 4 player slots.
-6. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline without deleting and re-creating.
-7. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
-8. After the round finishes, flip it to `complete`.
-
-All rounds and pairings for the entire weekend can be entered in one session before the tournament begins.
-
----
-
-## Golfer Workflow
-
-1. Open the URL on their phone (no app install needed — works as a PWA).
-2. Enter the tournament ID and their group's PIN.
-3. See their active rounds on the home screen.
-4. Tap a round → hole-by-hole scorecard.
-5. For Wolf: the Wolf rotates automatically each hole. Select the Wolf's decision (Lone Wolf pre/post or pick a partner) and enter all four scores before locking.
-6. Lock each hole as they finish. Tap the leaderboard icon to see live standings.
+Session state is stored in `localStorage` with a 6-hour TTL. Closing the tab does not log out; the session is restored on next open via a single Firestore read. There are three session types: app admin (no tournament), tournament admin (tournament scoped), and group (tournament + group scoped).
 
 ---
 
@@ -128,7 +143,6 @@ npm run build
 Required environment variables:
 
 ```
-VITE_TOURNAMENT_ID=your-tournament-id
 VITE_FIREBASE_API_KEY=...
 VITE_FIREBASE_AUTH_DOMAIN=...
 VITE_FIREBASE_PROJECT_ID=...
@@ -136,8 +150,25 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 
-# No extra env vars needed for AI commentary — key lives in nginx config
+# Optional — enables AI commentary
+VITE_GEMMA_API_KEY=...
 ```
+
+The app admin master PIN lives in Firestore (`config/app.appAdminPin`), not in env vars. No env var is needed for it.
+
+---
+
+## First-Time Server Setup
+
+Before deploying for the first time, create the app admin PIN document in Firestore:
+
+1. Open [console.firebase.google.com](https://console.firebase.google.com) → **Firestore Database**
+2. Add a new collection: **Collection ID** `config`
+3. **Document ID** `app`
+4. Add field: `appAdminPin` (string) → your chosen master PIN
+5. Save
+
+This is a one-time step. To change the PIN later, edit the field value directly in the console — no redeploy needed.
 
 ---
 
@@ -156,4 +187,4 @@ The script pulls the latest code, runs `npm ci` and `npm run build`. nginx is al
 
 ## Firestore Security Rules
 
-All subcollections (rounds, groups, scores, golfers, courses) are readable by anyone with the tournament ID. Scores are writable by the group that owns them (enforced by document ID matching the group ID in the score doc). Admin writes are gated at the application level by the admin PIN.
+All data is readable and writable by anyone who knows the path — Firestore rules are permissive (`allow read, write: if true`). Access control is enforced entirely at the application level via PINs. Do not store sensitive personal data.
