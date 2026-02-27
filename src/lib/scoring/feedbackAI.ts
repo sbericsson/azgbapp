@@ -1,5 +1,6 @@
-const ANTHROPIC_URL = '/api/ai/messages'; // proxied via nginx — key lives in nginx config
-const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
+const GEMMA_API_KEY = import.meta.env.VITE_GEMMA_API_KEY as string | undefined;
+const GEMMA_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemma-3-1b-it:generateContent';
 const TIMEOUT_MS = 5000;
 
 export interface AIFeedbackContext {
@@ -124,36 +125,35 @@ function buildPrompt(ctx: AIFeedbackContext): string {
 }
 
 export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
+  if (!GEMMA_API_KEY) throw new Error('No Gemma API key configured');
+
   const prompt = buildPrompt(ctx);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(ANTHROPIC_URL, {
+    const res = await fetch(`${GEMMA_URL}?key=${GEMMA_API_KEY}`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 100,
-        messages: [{ role: 'user', content: prompt }],
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: 100, temperature: 0.9 },
       }),
       signal: controller.signal,
     });
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.error('AI proxy error body:', body);
-      throw new Error(`AI proxy error: ${res.status}`);
+      console.error('AI error body:', body);
+      throw new Error(`AI error: ${res.status}`);
     }
 
     const data = (await res.json()) as {
-      content?: { type: string; text: string }[];
+      candidates?: { content: { parts: { text: string }[] } }[];
     };
 
-    const text = data.content?.find((b) => b.type === 'text')?.text?.trim();
-    if (!text) throw new Error('Empty response from Anthropic');
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!text) throw new Error('Empty response from Gemma');
     return text;
   } finally {
     clearTimeout(timeoutId);
