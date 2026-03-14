@@ -128,7 +128,6 @@ export function Admin() {
   const [tLogoUrl, setTLogoUrl] = useState(tournament?.logoUrl ?? '');
   const [tSettingsSaving, setTSettingsSaving] = useState(false);
   const [tLogoUploading, setTLogoUploading] = useState(false);
-  const [tLogoError, setTLogoError] = useState('');
   const [settingsCopied, setSettingsCopied] = useState(false);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -479,30 +478,17 @@ export function Admin() {
 
   const uploadLogo = (file: File) => {
     setTLogoUploading(true);
-    setTLogoError('');
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      setTLogoError('Could not read image file.');
-      setTLogoUploading(false);
-    };
     img.onload = () => {
-      const MAX = 320;
+      const MAX = 512;
       const scale = Math.min(1, MAX / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.round(img.width * scale);
       canvas.height = Math.round(img.height * scale);
       canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(objectUrl);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-      // Firestore doc limit is 1MB — logo should be well under 200KB
-      if (dataUrl.length > 200_000) {
-        setTLogoError('Image is too large after compression. Try a smaller or simpler image.');
-        setTLogoUploading(false);
-        return;
-      }
-      setTLogoUrl(dataUrl);
+      setTLogoUrl(canvas.toDataURL('image/jpeg', 0.85));
       setTLogoUploading(false);
     };
     img.src = objectUrl;
@@ -626,9 +612,6 @@ export function Admin() {
                     e.target.value = '';
                   }}
                 />
-                {tLogoError && (
-                  <p className="text-red-400 text-xs">{tLogoError}</p>
-                )}
                 {tLogoUrl && (
                   <button
                     type="button"
