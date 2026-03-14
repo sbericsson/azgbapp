@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Tournament logos: publicly readable, writable by anyone
+    // (matches the app's PIN-only auth model — same as Firestore rules)
+    match /tournaments/{tournamentId}/logo {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}

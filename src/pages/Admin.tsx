@@ -1,4 +1,6 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useRef } from 'react';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase';
 import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
@@ -127,7 +129,9 @@ export function Admin() {
   const [tName, setTName] = useState(tournament?.name ?? '');
   const [tLogoUrl, setTLogoUrl] = useState(tournament?.logoUrl ?? '');
   const [tSettingsSaving, setTSettingsSaving] = useState(false);
+  const [tLogoUploading, setTLogoUploading] = useState(false);
   const [settingsCopied, setSettingsCopied] = useState(false);
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
 
   // Roster
   const [golfers, setGolfers] = useState<Golfer[]>([]);
@@ -474,10 +478,19 @@ export function Admin() {
 
   // ── Tournament Settings ───────────────────────────────────────────────────────
 
+  const uploadLogo = async (file: File) => {
+    setTLogoUploading(true);
+    const path = storageRef(storage, `tournaments/${tId}/logo`);
+    await uploadBytes(path, file, { contentType: file.type });
+    const url = await getDownloadURL(path);
+    setTLogoUrl(url);
+    setTLogoUploading(false);
+  };
+
   const saveTournamentSettings = async () => {
     if (!tName.trim()) return;
     setTSettingsSaving(true);
-    await updateTournamentData({ name: tName.trim(), logoUrl: tLogoUrl.trim() || undefined });
+    await updateTournamentData({ name: tName.trim(), logoUrl: tLogoUrl || undefined });
     setTSettingsSaving(false);
   };
 
@@ -560,22 +573,46 @@ export function Admin() {
                 </div>
               </div>
 
-              {/* Logo URL */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-gray-400 text-xs font-medium">Logo URL (optional)</label>
+              {/* Logo upload */}
+              <div className="flex flex-col gap-2">
+                <label className="text-gray-400 text-xs font-medium">Tournament Logo (optional)</label>
+                <div className="flex items-center gap-3">
+                  {tLogoUrl && (
+                    <img
+                      src={tLogoUrl}
+                      alt="Logo preview"
+                      className="h-14 w-auto rounded-lg bg-white p-1 shrink-0"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => logoFileInputRef.current?.click()}
+                    disabled={tLogoUploading}
+                    className="flex-1 py-2.5 bg-gray-700 rounded-xl text-sm font-medium disabled:opacity-40"
+                  >
+                    {tLogoUploading ? 'Uploading…' : tLogoUrl ? 'Replace Logo' : 'Upload Logo'}
+                  </button>
+                </div>
                 <input
-                  className="w-full bg-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm"
-                  placeholder="https://example.com/logo.png"
-                  value={tLogoUrl}
-                  onChange={(e) => setTLogoUrl(e.target.value)}
+                  ref={logoFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadLogo(file);
+                    e.target.value = '';
+                  }}
                 />
-                {tLogoUrl.trim() && (
-                  <img
-                    src={tLogoUrl.trim()}
-                    alt="Logo preview"
-                    className="h-16 w-auto rounded-lg bg-white p-1 self-start"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
+                {tLogoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setTLogoUrl('')}
+                    className="text-red-400 text-xs self-start"
+                  >
+                    Remove logo
+                  </button>
                 )}
               </div>
 
