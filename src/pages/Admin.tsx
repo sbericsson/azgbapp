@@ -1,6 +1,4 @@
 import { useState, useEffect, useContext, useRef } from 'react';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firebase';
 import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
@@ -478,13 +476,22 @@ export function Admin() {
 
   // ── Tournament Settings ───────────────────────────────────────────────────────
 
-  const uploadLogo = async (file: File) => {
+  const uploadLogo = (file: File) => {
     setTLogoUploading(true);
-    const path = storageRef(storage, `tournaments/${tId}/logo`);
-    await uploadBytes(path, file, { contentType: file.type });
-    const url = await getDownloadURL(path);
-    setTLogoUrl(url);
-    setTLogoUploading(false);
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 512;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(objectUrl);
+      setTLogoUrl(canvas.toDataURL('image/jpeg', 0.85));
+      setTLogoUploading(false);
+    };
+    img.src = objectUrl;
   };
 
   const saveTournamentSettings = async () => {
