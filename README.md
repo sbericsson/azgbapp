@@ -122,9 +122,11 @@ Session state is stored in `localStorage` with a 6-hour TTL. Closing the tab doe
 
 ## AI Commentary
 
-When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Gemma API (`gemma-3-1b-it` via Google Generative Language API) to generate a one or two sentence commentary line personalised to the moment — referencing player names, recent hole history, scoring streaks, and where the group sits on the leaderboard. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
+When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Google Generative Language API (`gemini-3.1-flash-lite-preview`) to generate a short, punchy commentary line personalised to the moment — referencing player names (Best Ball only), recent hole history, scoring streaks, and live leaderboard position. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
 
-The Gemma API supports CORS from the browser directly, so no nginx proxy is required. To enable AI commentary:
+The model is prompted with a `systemInstruction` to act as a dry, brutally honest golf commentator and respond in one sentence (max two). Commentary for scramble and gauntlet formats avoids naming individual players since those formats score as a team.
+
+The Google Generative Language API supports CORS from the browser directly, so no nginx proxy is required. To enable AI commentary:
 
 1. Get a free API key from [Google AI Studio](https://aistudio.google.com/) (no billing required).
 2. Add it to `/var/www/azgb/.env.local` on the server:
@@ -166,7 +168,7 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 
-# Optional — enables AI commentary
+# Optional — enables AI commentary (Google AI Studio key)
 VITE_GEMMA_API_KEY=...
 ```
 
