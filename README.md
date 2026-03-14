@@ -48,13 +48,17 @@ There are three access levels, all PIN-based:
 ## Tournament Admin Workflow
 
 1. Log in with the tournament code + admin PIN → `/admin`
-2. **Build the golfer roster** — expand the Golfer Roster section and add every participant's name once. These names auto-complete in all player slots when building pairings.
-3. **Add golf courses** — expand the Golf Courses section and add each course by name. Tap each hole to cycle its par (3 / 4 / 5); total par updates live. Courses can be edited or deleted at any time.
-4. **Create rounds** — name, day, format, and hole count for each round. Select a course from the dropdown to pre-fill the per-hole par values, or set them manually.
-5. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For 2-person formats, fill just 2 of the 4 player slots.
-6. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline.
-7. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
-8. After the round finishes, flip it to `complete`.
+2. **Tournament Settings** — expand the Tournament Settings section to:
+   - Edit the **tournament name** without touching Firestore directly.
+   - Upload a **custom logo** for this tournament. The image is compressed and resized in the browser (max 512 px) and stored as a base64 data URL directly in Firestore — no external hosting or Firebase Storage required. The logo appears on the login screen and the golfer home screen.
+   - Copy the **public results link** — a shareable URL that shows final standings with no PIN required (see [Public Results](#public-results) below).
+3. **Build the golfer roster** — expand the Golfer Roster section and add every participant's name once. These names auto-complete in all player slots when building pairings.
+4. **Add golf courses** — expand the Golf Courses section and add each course by name. Tap each hole to cycle its par (3 / 4 / 5); total par updates live. Courses can be edited or deleted at any time.
+5. **Create rounds** — name, day, format, and hole count for each round. Select a course from the dropdown to pre-fill the per-hole par values, or set them manually.
+6. **Add pairings** — expand a round card and tap "+ Add Pairing". Each pairing gets a group name, a 4-digit PIN (type one or hit "Random PIN"), and up to 4 players chosen from the roster or typed freely. For 2-person formats, fill just 2 of the 4 player slots.
+7. **Edit pairings** — tap "Edit" on any existing pairing to update names, PIN, or player list inline. Group names can also be changed here at any time.
+8. Before teeing off each day, tap the round's status button to flip it from `pending` → `active`.
+9. After the round finishes, flip it to `complete`.
 
 Share the **tournament code** and each group's **PIN** with players before they arrive. Both are shown on every pairing card.
 
@@ -68,6 +72,18 @@ Share the **tournament code** and each group's **PIN** with players before they 
 4. Tap a round → hole-by-hole scorecard.
 5. For Wolf: the Wolf rotates automatically each hole. Select the Wolf's decision and enter all four scores before locking.
 6. Lock each hole as they finish. Tap the leaderboard icon to see live standings.
+
+---
+
+## Public Results
+
+After a tournament has completed rounds, the admin can share a PIN-free results link with anyone:
+
+```
+https://your-domain.com/results/{tournamentId}
+```
+
+The page shows final standings for every completed round — no login, no PIN. It's safe to text or email to all participants after the tournament ends. The link is available in the **Tournament Settings** section of the admin panel (tap the copy button).
 
 ---
 
@@ -88,7 +104,7 @@ Share the **tournament code** and each group's **PIN** with players before they 
 config/app                    ← app admin PIN (single document)
 
 tournaments/{tournamentId}    ← tournamentId = the login code
-  adminPin, name, createdAt
+  adminPin, name, createdAt, logoUrl? (base64 data URL)
   rounds/{roundId}            ← name, format, day, status, holes, par[], courseId?
     scores/{groupId}          ← holes[], updatedAt (live score doc)
   groups/{groupId}            ← name, pin, players[], roundId
