@@ -12,7 +12,8 @@ function isUnlocked() {
   return (
     Date.now() >= LAUNCH_TIME.getTime() ||
     localStorage.getItem(BYPASS_KEY) === 'true' ||
-    window.location.pathname === '/bypass'
+    window.location.pathname === '/bypass' ||
+    window.location.pathname.startsWith('/results/')
   );
 }
 

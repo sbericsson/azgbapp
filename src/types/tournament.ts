@@ -42,6 +42,7 @@ export interface Tournament {
   name: string;
   adminPin: string;
   createdAt: number;
+  logoUrl?: string;
 }
 
 export interface AppConfig {

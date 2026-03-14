@@ -19,7 +19,7 @@ const formatLabel: Record<string, string> = {
 };
 
 export function Home() {
-  const { group, logout, tournamentId } = useContext(AuthContext);
+  const { group, logout, tournamentId, tournament } = useContext(AuthContext);
   const navigate = useNavigate();
   const [rounds, setRounds] = useState<Round[]>([]);
   const [courseMap, setCourseMap] = useState<Map<string, Course>>(new Map());
@@ -50,7 +50,7 @@ export function Home() {
     <div className="min-h-screen bg-gray-950 text-white">
       <header className="bg-gray-900 px-4 py-4 flex items-center justify-between border-b border-gray-700">
         <div className="flex items-center gap-3">
-          <img src="/azgb-logo.png" alt="AZGB" className="h-10 w-auto bg-white rounded-lg p-0.5" />
+          <img src={tournament?.logoUrl || '/azgb-logo.png'} alt="AZGB" className="h-10 w-auto bg-white rounded-lg p-0.5" />
           {group && <p className="text-green-400 text-sm font-medium">{group.name}</p>}
         </div>
         <button onClick={logout} className="text-gray-400 text-sm">

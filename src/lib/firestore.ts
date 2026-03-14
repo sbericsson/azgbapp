@@ -39,6 +39,13 @@ export async function deleteTournament(id: string): Promise<void> {
   await deleteDoc(doc(db, 'tournaments', id));
 }
 
+export async function updateTournament(
+  id: string,
+  data: Partial<Omit<Tournament, 'id'>>,
+): Promise<void> {
+  await updateDoc(doc(db, 'tournaments', id), data);
+}
+
 // ── App Config ─────────────────────────────────────────────────────────────────
 
 export async function getAppConfig(): Promise<AppConfig | null> {

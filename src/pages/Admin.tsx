@@ -118,9 +118,16 @@ function ParEditor({
 // ── Admin page ────────────────────────────────────────────────────────────────
 
 export function Admin() {
-  const { tournament, logout, tournamentId, isAppAdmin } = useContext(AuthContext);
+  const { tournament, logout, tournamentId, isAppAdmin, updateTournamentData } = useContext(AuthContext);
   // tournamentId is always set by the time Admin renders (route guard + loginAsAdmin/enterTournamentAsAdmin)
   const tId = tournamentId ?? '';
+
+  // Tournament Settings
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tName, setTName] = useState(tournament?.name ?? '');
+  const [tLogoUrl, setTLogoUrl] = useState(tournament?.logoUrl ?? '');
+  const [tSettingsSaving, setTSettingsSaving] = useState(false);
+  const [settingsCopied, setSettingsCopied] = useState(false);
 
   // Roster
   const [golfers, setGolfers] = useState<Golfer[]>([]);
@@ -465,6 +472,22 @@ export function Admin() {
     setREditSaving(false);
   };
 
+  // ── Tournament Settings ───────────────────────────────────────────────────────
+
+  const saveTournamentSettings = async () => {
+    if (!tName.trim()) return;
+    setTSettingsSaving(true);
+    await updateTournamentData({ name: tName.trim(), logoUrl: tLogoUrl.trim() || undefined });
+    setTSettingsSaving(false);
+  };
+
+  const copyPublicUrl = async () => {
+    const url = `${window.location.origin}/results/${tId}`;
+    await navigator.clipboard.writeText(url);
+    setSettingsCopied(true);
+    setTimeout(() => setSettingsCopied(false), 2000);
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const coursesById = Object.fromEntries(courses.map((c) => [c.id, c]));
@@ -508,6 +531,81 @@ export function Admin() {
       </header>
 
       <div className="p-4 max-w-lg mx-auto flex flex-col gap-4">
+
+        {/* ── Tournament Settings ── */}
+        <div className="bg-gray-800 rounded-2xl overflow-hidden">
+          <button
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="w-full px-4 py-4 flex items-center justify-between text-left"
+          >
+            <div>
+              <p className="font-bold text-lg">Tournament Settings</p>
+              <p className="text-gray-400 text-xs">Name, logo, and public results link</p>
+            </div>
+            <span className="text-gray-500 text-sm ml-2">{settingsOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {settingsOpen && (
+            <div className="border-t border-gray-700 px-4 pb-4 pt-3 flex flex-col gap-4">
+              {/* Tournament name */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-gray-400 text-xs font-medium">Tournament Name</label>
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 bg-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm"
+                    placeholder="Tournament name"
+                    value={tName}
+                    onChange={(e) => setTName(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Logo URL */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-gray-400 text-xs font-medium">Logo URL (optional)</label>
+                <input
+                  className="w-full bg-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm"
+                  placeholder="https://example.com/logo.png"
+                  value={tLogoUrl}
+                  onChange={(e) => setTLogoUrl(e.target.value)}
+                />
+                {tLogoUrl.trim() && (
+                  <img
+                    src={tLogoUrl.trim()}
+                    alt="Logo preview"
+                    className="h-16 w-auto rounded-lg bg-white p-1 self-start"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                )}
+              </div>
+
+              <button
+                onClick={saveTournamentSettings}
+                disabled={tSettingsSaving || !tName.trim()}
+                className="w-full py-2.5 bg-green-600 rounded-xl font-semibold text-sm disabled:opacity-40"
+              >
+                {tSettingsSaving ? 'Saving…' : 'Save Settings'}
+              </button>
+
+              {/* Public results link */}
+              <div className="flex flex-col gap-1.5 border-t border-gray-700 pt-3">
+                <label className="text-gray-400 text-xs font-medium">Public Results Link</label>
+                <p className="text-gray-500 text-xs">Share this URL — no PIN required. Shows all completed rounds.</p>
+                <div className="flex gap-2 items-center">
+                  <span className="flex-1 bg-gray-700 rounded-xl px-3 py-2 text-gray-300 text-xs truncate select-all">
+                    {window.location.origin}/results/{tId}
+                  </span>
+                  <button
+                    onClick={copyPublicUrl}
+                    className="px-3 py-2 bg-gray-600 rounded-xl text-xs font-medium shrink-0"
+                  >
+                    {settingsCopied ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* ── Golfer Roster ── */}
         <div className="bg-gray-800 rounded-2xl overflow-hidden">

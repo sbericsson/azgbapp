@@ -10,6 +10,7 @@ import {
   getTournament,
   getGroupById,
   updateGroup,
+  updateTournament,
   getAppConfig,
 } from '../lib/firestore';
 import type { Group, Tournament } from '../types/tournament';
@@ -30,6 +31,7 @@ interface AuthContextValue extends AuthState {
   enterTournamentAsAdmin: (tournamentId: string) => Promise<void>;
   logout: () => void;
   updateGroupName: (newName: string) => Promise<void>;
+  updateTournamentData: (data: Partial<Tournament>) => Promise<void>;
 }
 
 const SESSION_KEY = 'azgb_session';
@@ -57,6 +59,7 @@ export const AuthContext = createContext<AuthContextValue>({
   enterTournamentAsAdmin: async () => {},
   logout: () => {},
   updateGroupName: async () => {},
+  updateTournamentData: async () => {},
 });
 
 export function useAuth() {
@@ -243,6 +246,18 @@ export function useAuthProvider(): AuthContextValue {
     [state.group, state.tournamentId],
   );
 
+  const updateTournamentData = useCallback(
+    async (data: Partial<Tournament>) => {
+      if (!state.tournamentId) return;
+      await updateTournament(state.tournamentId, data);
+      setState((prev) => ({
+        ...prev,
+        tournament: prev.tournament ? { ...prev.tournament, ...data } : null,
+      }));
+    },
+    [state.tournamentId],
+  );
+
   return {
     ...state,
     loginAsGroup,
@@ -251,5 +266,6 @@ export function useAuthProvider(): AuthContextValue {
     enterTournamentAsAdmin,
     logout,
     updateGroupName,
+    updateTournamentData,
   };
 }
