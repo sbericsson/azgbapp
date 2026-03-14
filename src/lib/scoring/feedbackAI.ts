@@ -1,6 +1,6 @@
 const GEMMA_API_KEY = import.meta.env.VITE_GEMMA_API_KEY as string | undefined;
-const GEMMA_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemma-3-1b-it:generateContent';
+const MODEL = 'gemini-3.1-flash-lite-preview';
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const TIMEOUT_MS = 5000;
 
 export interface AIFeedbackContext {
@@ -54,13 +54,27 @@ function detectStreak(history: { rel: number }[]): string | null {
   return null;
 }
 
-function buildPrompt(ctx: AIFeedbackContext): string {
+function buildSystemInstruction(format: AIFeedbackContext['format']): string {
+  const base =
+    'You are a dry, brutally honest golf commentator for a private tournament. ' +
+    'Respond with exactly ONE punchy commentary line (max 2 sentences). ' +
+    'No preamble, no meta-commentary, no asterisks, no bullet points. ' +
+    "Do not start with 'Ah', 'Well', 'Okay', 'Sure', or any other filler word.";
+
+  if (format === 'bestBall') {
+    return (
+      base +
+      " You can reference a player by first name if their running total makes it relevant (e.g. one player carrying the team or struggling)."
+    );
+  }
+  return base + ' Do not reference any player by name — the team acts as one unit in this format.';
+}
+
+function buildUserPrompt(ctx: AIFeedbackContext): string {
   const fmtName = ctx.format === 'bestBall' ? 'best ball' : ctx.format;
   const parts: string[] = [];
 
-  parts.push(
-    `Golf commentary for a private tournament. Format: ${fmtName}. Round: ${ctx.roundName}.`,
-  );
+  parts.push(`Format: ${fmtName}. Round: ${ctx.roundName}.`);
 
   if (ctx.format === 'bestBall') {
     const pStr = ctx.players.map((p) => `${p.name} (${fmtScore(p.runningToPar)})`).join(', ');
@@ -107,36 +121,30 @@ function buildPrompt(ctx: AIFeedbackContext): string {
     );
   }
 
-  parts.push('');
-  parts.push(
-    'Write ONE punchy commentary line (max 2 sentences). Dry, brutally honest, golf-savvy tone.',
-  );
-  if (ctx.format === 'bestBall') {
-    parts.push(
-      "You can reference a player by first name if their running total makes it relevant (e.g. one player carrying the team or struggling). No asterisks, no bullet points, don't start with \"Ah\" or \"Well\".",
-    );
-  } else {
-    parts.push(
-      "Do not reference any player by name — the team acts as one unit in this format. No asterisks, no bullet points, don't start with \"Ah\" or \"Well\".",
-    );
-  }
-
   return parts.join('\n');
+}
+
+// Strip common model preamble patterns as a safety net
+function stripPreamble(text: string): string {
+  return text
+    .replace(/^(okay|sure|here('s| is)|commentary|alright)[^:]*:\s*/i, '')
+    .replace(/^["']|["']$/g, '')
+    .trim();
 }
 
 export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
   if (!GEMMA_API_KEY) throw new Error('No Gemma API key configured');
 
-  const prompt = buildPrompt(ctx);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${GEMMA_URL}?key=${GEMMA_API_KEY}`, {
+    const res = await fetch(`${API_URL}?key=${GEMMA_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        systemInstruction: { parts: [{ text: buildSystemInstruction(ctx.format) }] },
+        contents: [{ parts: [{ text: buildUserPrompt(ctx) }] }],
         generationConfig: { maxOutputTokens: 100, temperature: 0.9 },
       }),
       signal: controller.signal,
@@ -153,8 +161,8 @@ export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
     };
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text) throw new Error('Empty response from Gemma');
-    return text;
+    if (!text) throw new Error('Empty response from AI');
+    return stripPreamble(text);
   } finally {
     clearTimeout(timeoutId);
   }
