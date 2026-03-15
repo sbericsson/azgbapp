@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   getTournament,
@@ -6,7 +6,9 @@ import {
   listCourses,
   listGroupsByRound,
   listAllScores,
+  subscribeAllScores,
 } from '../lib/firestore';
+import type { Unsubscribe } from 'firebase/firestore';
 import type { Group, Round, RoundFormat, Tournament } from '../types/tournament';
 import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
 import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
@@ -109,6 +111,10 @@ export function PublicResults() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  // Stable refs for live-update callbacks to avoid stale closures
+  const groupsByRoundRef = useRef<Record<string, Group[]>>({});
+  const subscriptionsRef = useRef<Unsubscribe[]>([]);
+
   useEffect(() => {
     if (!tournamentId) { setNotFound(true); setLoading(false); return; }
     let cancelled = false;
@@ -134,6 +140,7 @@ export function PublicResults() {
             listGroupsByRound(tournamentId, round.id),
             listAllScores(tournamentId, round.id),
           ]);
+          groupsByRoundRef.current[round.id] = groups;
           const entries = computeRoundEntries(round, groups, scoreDocs);
           const sortedEntries = [...entries].sort((a, b) =>
             round.format === 'wolf' ? b.score - a.score : a.score - b.score,
@@ -146,13 +153,33 @@ export function PublicResults() {
         }),
       );
 
-      if (!cancelled) {
-        setResults(roundResults);
-        setLoading(false);
-      }
+      if (cancelled) return;
+      setResults(roundResults);
+      setLoading(false);
+
+      // Subscribe to live score updates for active rounds
+      visibleRounds
+        .filter((r) => r.status === 'active')
+        .forEach((round) => {
+          const unsub = subscribeAllScores(tournamentId, round.id, (scoreDocs) => {
+            const groups = groupsByRoundRef.current[round.id] ?? [];
+            const entries = computeRoundEntries(round, groups, scoreDocs);
+            const sortedEntries = [...entries].sort((a, b) =>
+              round.format === 'wolf' ? b.score - a.score : a.score - b.score,
+            );
+            setResults((prev) =>
+              prev.map((r) => r.round.id === round.id ? { ...r, entries: sortedEntries } : r),
+            );
+          });
+          subscriptionsRef.current.push(unsub);
+        });
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      subscriptionsRef.current.forEach((unsub) => unsub());
+      subscriptionsRef.current = [];
+    };
   }, [tournamentId]);
 
   if (notFound) {
