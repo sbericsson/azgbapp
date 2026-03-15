@@ -1164,42 +1164,50 @@ export function Admin() {
                           </div>
                         </div>
                         <div className="flex items-center gap-3 border-t border-gray-600 pt-2">
-                          <a
-                            href={`sms:?body=${encodeURIComponent(`${r.name} — You're in '${g.name}' (PIN: ${g.pin}). Enter your scores here: ${window.location.origin}`)}`}
-                            className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
-                          >
-                            💬 Text
-                          </a>
-                          {typeof navigator.share === 'function' && (
-                            <button
-                              onClick={async () => {
-                                try {
-                                  await navigator.share({
-                                    title: `${r.name} — ${g.name}`,
-                                    text: `${r.name} — You're in '${g.name}' (PIN: ${g.pin}). Enter your scores here: ${window.location.origin}`,
-                                    url: window.location.origin,
-                                  });
-                                } catch {
-                                  // user cancelled or API failed — silent
-                                }
-                              }}
-                              className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
-                            >
-                              📤 Share
-                            </button>
-                          )}
-                          <button
-                            onClick={async () => {
-                              await navigator.clipboard.writeText(
-                                `${r.name} — You're in '${g.name}' (PIN: ${g.pin}). Enter your scores here: ${window.location.origin}`
-                              );
-                              setCopiedGroupId(g.id);
-                              setTimeout(() => setCopiedGroupId((id) => id === g.id ? null : id), 2000);
-                            }}
-                            className="flex items-center gap-1 text-xs font-medium active:text-gray-200 text-gray-400"
-                          >
-                            {copiedGroupId === g.id ? <span className="text-green-400">✓ Copied!</span> : '📋 Copy'}
-                          </button>
+                          {(() => {
+                            const players = g.players.map((p) => p.name).join(', ');
+                            const msg =
+                              `🏌️ ${tournament?.name ?? 'Golf Tournament'}\n` +
+                              `Round: ${r.name}\n` +
+                              `Group: ${g.name}\n` +
+                              `Players: ${players}\n` +
+                              `PIN: ${g.pin}\n\n` +
+                              `Enter scores & follow the leaderboard here:\n${window.location.origin}`;
+                            return (
+                              <>
+                                <a
+                                  href={`sms:?body=${encodeURIComponent(msg)}`}
+                                  className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
+                                >
+                                  💬 Text
+                                </a>
+                                {typeof navigator.share === 'function' && (
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await navigator.share({ title: `${tournament?.name ?? 'Golf Tournament'} — ${g.name}`, text: msg });
+                                      } catch {
+                                        // user cancelled or API failed — silent
+                                      }
+                                    }}
+                                    className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
+                                  >
+                                    📤 Share
+                                  </button>
+                                )}
+                                <button
+                                  onClick={async () => {
+                                    await navigator.clipboard.writeText(msg);
+                                    setCopiedGroupId(g.id);
+                                    setTimeout(() => setCopiedGroupId((id) => id === g.id ? null : id), 2000);
+                                  }}
+                                  className="flex items-center gap-1 text-xs font-medium active:text-gray-200 text-gray-400"
+                                >
+                                  {copiedGroupId === g.id ? <span className="text-green-400">✓ Copied!</span> : '📋 Copy'}
+                                </button>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     );
