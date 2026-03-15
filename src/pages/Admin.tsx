@@ -3,7 +3,7 @@ import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
   createCourse, listCourses, updateCourse, deleteCourse,
-  createGroup, updateGroup, deleteGroup, listGroupsByRound,
+  createGroup, updateGroup, deleteGroup, listGroupsByRound, getGroupByPin,
   createRound, listRounds, deleteRound, updateRound,
   listAllScores, clearRoundScores,
 } from '../lib/firestore';
@@ -170,6 +170,7 @@ export function Admin() {
   const [gPin, setGPin] = useState('');
   const [gPlayers, setGPlayers] = useState(['', '', '', '']);
   const [gSaving, setGSaving] = useState(false);
+  const [pinError, setPinError] = useState('');
 
   // Status-change confirmation
   const [pendingStatusRound, setPendingStatusRound] = useState<Round | null>(null);
@@ -333,6 +334,7 @@ export function Admin() {
     setGName('');
     setGPin(randomPin(tournament?.adminPin));
     setGPlayers(['', '', '', '']);
+    setPinError('');
   };
 
   const cancelAddPairing = () => setAddingGroupToRound(null);
@@ -342,6 +344,7 @@ export function Admin() {
     setEditingGroupId(group.id);
     setGName(group.name);
     setGPin(group.pin);
+    setPinError('');
     const names = group.players.map((p) => p.name);
     while (names.length < 4) names.push('');
     setGPlayers(names);
@@ -350,6 +353,13 @@ export function Admin() {
   const saveEdit = async (roundId: string, group: Group) => {
     if (!gName.trim() || !gPin.trim()) return;
     setGSaving(true);
+    const existing = await getGroupByPin(tId, gPin.trim());
+    if (existing && existing.id !== group.id) {
+      setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
+      setGSaving(false);
+      return;
+    }
+    setPinError('');
     const players: Player[] = gPlayers
       .filter((n) => n.trim())
       .map((name, i) => ({
@@ -374,6 +384,13 @@ export function Admin() {
   const savePairing = async (roundId: string) => {
     if (!gName.trim() || !gPin.trim()) return;
     setGSaving(true);
+    const existing = await getGroupByPin(tId, gPin.trim());
+    if (existing) {
+      setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
+      setGSaving(false);
+      return;
+    }
+    setPinError('');
     const players: Player[] = gPlayers
       .filter((n) => n.trim())
       .map((name) => ({ id: nanoid(), name: name.trim() }));
@@ -1063,7 +1080,7 @@ export function Admin() {
                             className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
                             placeholder="4-digit PIN"
                             value={gPin}
-                            onChange={(e) => setGPin(e.target.value)}
+                            onChange={(e) => { setGPin(e.target.value); setPinError(''); }}
                             maxLength={4}
                             inputMode="numeric"
                           />
@@ -1074,6 +1091,7 @@ export function Admin() {
                             Random PIN
                           </button>
                         </div>
+                        {pinError && <p className="text-red-400 text-xs">{pinError}</p>}
                         <p className="text-gray-400 text-xs">Players (up to 4):</p>
                         {gPlayers.map((name, i) => {
                           const otherNames = new Set(
@@ -1227,7 +1245,7 @@ export function Admin() {
                           className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
                           placeholder="4-digit PIN"
                           value={gPin}
-                          onChange={(e) => setGPin(e.target.value)}
+                          onChange={(e) => { setGPin(e.target.value); setPinError(''); }}
                           maxLength={4}
                           inputMode="numeric"
                         />
@@ -1238,6 +1256,7 @@ export function Admin() {
                           Random PIN
                         </button>
                       </div>
+                      {pinError && <p className="text-red-400 text-xs">{pinError}</p>}
                       <p className="text-gray-400 text-xs">Players (up to 4):</p>
                       {gPlayers.map((name, i) => {
                         const otherNames = new Set(
