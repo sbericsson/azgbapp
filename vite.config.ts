@@ -11,9 +11,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'AZGB Golf',
-        short_name: 'AZGB',
-        description: 'AZGB Golf Tournament Scoring',
+        name: 'Golf Bender App',
+        short_name: 'Golf Bender',
+        description: 'Golf Bender Tournament Scoring',
         theme_color: '#030712',
         background_color: '#030712',
         display: 'standalone',
