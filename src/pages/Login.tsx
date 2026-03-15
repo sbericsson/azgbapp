@@ -1,14 +1,30 @@
-import { useState, useContext } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
+import { getTournament } from '../lib/firestore';
 
 export function Login() {
   const { loginAsGroup, loginAsAdmin, loginAsAppAdmin } = useContext(AuthContext);
   const navigate = useNavigate();
   const [tournamentCode, setTournamentCode] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('azgb_session');
+    if (!raw) return;
+    try {
+      const session = JSON.parse(raw);
+      if (session.tournamentId) {
+        setTournamentCode(session.tournamentId);
+        getTournament(session.tournamentId).then((t) => {
+          if (t?.logoUrl) setLogoUrl(t.logoUrl);
+        }).catch(() => {});
+      }
+    } catch {}
+  }, []);
 
   const backspace = () => setPin((p) => p.slice(0, -1));
   const clear = () => setPin('');
@@ -69,7 +85,7 @@ export function Login() {
       <div className="w-full max-w-sm">
         <div className="flex justify-center mb-6">
           <div className="bg-white rounded-2xl p-3 shadow-lg">
-            <img src="/azgb-logo.png" alt="AZ Golf Bender" className="w-44 h-auto" />
+            <img src={logoUrl ?? '/azgb-logo.png'} alt="AZ Golf Bender" className="w-44 h-auto" />
           </div>
         </div>
 
