@@ -124,12 +124,12 @@ export function PublicResults() {
       ]);
 
       const courseMap = Object.fromEntries(courses.map((c) => [c.id, c.name]));
-      const completedRounds = rounds
-        .filter((r) => r.status === 'complete')
+      const visibleRounds = rounds
+        .filter((r) => r.status === 'complete' || r.status === 'active')
         .sort((a, b) => (DAY_ORDER[a.day] ?? 99) - (DAY_ORDER[b.day] ?? 99));
 
       const roundResults: RoundResult[] = await Promise.all(
-        completedRounds.map(async (round) => {
+        visibleRounds.map(async (round) => {
           const [groups, scoreDocs] = await Promise.all([
             listGroupsByRound(tournamentId, round.id),
             listAllScores(tournamentId, round.id),
@@ -180,7 +180,7 @@ export function PublicResults() {
         />
         <div>
           <h1 className="text-lg font-bold">{tournament?.name ?? 'Tournament Results'}</h1>
-          <p className="text-gray-400 text-xs">Final Results</p>
+          <p className="text-gray-400 text-xs">Tournament Results</p>
         </div>
       </header>
 
@@ -192,8 +192,8 @@ export function PublicResults() {
         {!loading && results.length === 0 && (
           <div className="text-center py-12">
             <p className="text-4xl mb-3">🏌️</p>
-            <p className="text-gray-400">No completed rounds yet.</p>
-            <p className="text-gray-500 text-sm mt-1">Check back when the tournament wraps up.</p>
+            <p className="text-gray-400">No results yet.</p>
+            <p className="text-gray-500 text-sm mt-1">Check back when rounds are underway.</p>
           </div>
         )}
 
@@ -205,11 +205,14 @@ export function PublicResults() {
 
             return (
               <div key={round.id} className="bg-gray-800 rounded-2xl overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-700">
+                <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between gap-2">
                   <p className="font-bold">
                     Round {idx + 1} · {dayLabel(round.day)} · {formatLabel(round.format)}
                     {courseName ? ` · ${courseName}` : ''}
                   </p>
+                  {round.status === 'active' && (
+                    <span className="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full font-medium shrink-0">Live</span>
+                  )}
                 </div>
 
                 {entries.length === 0 ? (
@@ -234,9 +237,14 @@ export function PublicResults() {
                               )}
                             </div>
                           </div>
-                          <span className="font-bold text-sm shrink-0">
-                            {entry.holesCompleted === 0 ? '—' : fmtScore(entry.score, round.format)}
-                          </span>
+                          <div className="text-right shrink-0">
+                            <span className="font-bold text-sm block">
+                              {entry.holesCompleted === 0 ? '—' : fmtScore(entry.score, round.format)}
+                            </span>
+                            {round.status === 'active' && entry.holesCompleted > 0 && entry.holesCompleted < round.holes && (
+                              <span className="text-gray-500 text-xs">thru {entry.holesCompleted}</span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}

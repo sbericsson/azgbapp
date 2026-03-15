@@ -651,7 +651,7 @@ export function Admin() {
               {/* Public results link */}
               <div className="flex flex-col gap-1.5 border-t border-gray-700 pt-3">
                 <label className="text-gray-400 text-xs font-medium">Public Results Link</label>
-                <p className="text-gray-500 text-xs">Share this URL — no PIN required. Shows all completed rounds.</p>
+                <p className="text-gray-500 text-xs">Share this URL — no PIN required. Shows active and completed rounds.</p>
                 <div className="flex gap-2 items-center">
                   <span className="flex-1 bg-gray-700 rounded-xl px-3 py-2 text-gray-300 text-xs truncate select-all">
                     {window.location.origin}/results/{tId}
