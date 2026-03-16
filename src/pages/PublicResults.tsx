@@ -35,6 +35,7 @@ interface RoundEntry {
   holesCompleted: number;
   playerPoints?: { name: string; pts: number }[];
   playerTotals?: { name: string; total: number }[];
+  scoreDoc?: GroupScoreDoc;
 }
 
 interface RoundResult {
@@ -66,6 +67,7 @@ function computeRoundEntries(
         score: playerPoints.reduce((s, p) => s + p.pts, 0),
         holesCompleted,
         playerPoints,
+        scoreDoc,
       };
     }
 
@@ -80,16 +82,16 @@ function computeRoundEntries(
         }, 0);
         return { name: p.name, total };
       });
-      return { group, score: teamScore, holesCompleted, playerTotals };
+      return { group, score: teamScore, holesCompleted, playerTotals, scoreDoc };
     }
 
     if (round.format === 'gauntlet') {
       const gHoles = lockedHoles.filter(isGauntletHole) as GauntletHoleScore[];
-      return { group, score: gauntletTotalToPar(gHoles, round.par), holesCompleted };
+      return { group, score: gauntletTotalToPar(gHoles, round.par), holesCompleted, scoreDoc };
     }
 
     const sHoles = lockedHoles.filter(isScrambleHole) as ScrambleHoleScore[];
-    return { group, score: scrambleTotalToPar(sHoles, round.par), holesCompleted };
+    return { group, score: scrambleTotalToPar(sHoles, round.par), holesCompleted, scoreDoc };
   });
 }
 
@@ -104,12 +106,18 @@ function formatLabel(format: RoundFormat) {
   return format.charAt(0).toUpperCase() + format.slice(1);
 }
 
+interface SelectedDetail {
+  entry: RoundEntry;
+  round: Round;
+}
+
 export function PublicResults() {
   const { tournamentId } = useParams<{ tournamentId: string }>();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [results, setResults] = useState<RoundResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [selected, setSelected] = useState<SelectedDetail | null>(null);
 
   // Stable refs for live-update callbacks to avoid stale closures
   const groupsByRoundRef = useRef<Record<string, Group[]>>({});
@@ -253,30 +261,198 @@ export function PublicResults() {
                         ? (entry.playerTotals ?? []).map((pt) => `${pt.name}: ${fmtScore(pt.total, 'bestBall')}`).join(' · ')
                         : entry.group.players.map((p) => p.name).join(' · ');
 
+                      const hasScores = entry.holesCompleted > 0 && !!entry.scoreDoc;
                       return (
-                        <div key={entry.group.id} className="px-4 py-3 flex items-start justify-between gap-3">
+                        <button
+                          key={entry.group.id}
+                          onClick={() => hasScores ? setSelected({ entry, round }) : undefined}
+                          disabled={!hasScores}
+                          className={`w-full px-4 py-3 flex items-start justify-between gap-3 text-left ${hasScores ? 'active:bg-gray-700/50' : ''}`}
+                        >
                           <div className="flex items-start gap-3 min-w-0">
                             <span className="text-gray-500 text-sm w-5 shrink-0 mt-0.5">{rank + 1}</span>
                             <div className="min-w-0">
-                              <p className="font-medium text-sm">{entry.group.name}</p>
+                              <p className={`font-medium text-sm ${hasScores ? 'text-white' : 'text-gray-400'}`}>{entry.group.name}</p>
                               {playerLine && (
                                 <p className="text-gray-400 text-xs mt-0.5 leading-relaxed">{playerLine}</p>
                               )}
                             </div>
                           </div>
-                          <div className="text-right shrink-0">
-                            <span className="font-bold text-sm block">
-                              {entry.holesCompleted === 0 ? '—' : fmtScore(entry.score, round.format)}
-                            </span>
-                            {round.status === 'active' && entry.holesCompleted > 0 && entry.holesCompleted < round.holes && (
-                              <span className="text-gray-500 text-xs">thru {entry.holesCompleted}</span>
-                            )}
+                          <div className="text-right shrink-0 flex items-center gap-2">
+                            <div>
+                              <span className="font-bold text-sm block">
+                                {entry.holesCompleted === 0 ? '—' : fmtScore(entry.score, round.format)}
+                              </span>
+                              {round.status === 'active' && entry.holesCompleted > 0 && entry.holesCompleted < round.holes && (
+                                <span className="text-gray-500 text-xs">thru {entry.holesCompleted}</span>
+                              )}
+                            </div>
+                            {hasScores && <span className="text-gray-600 text-xs">›</span>}
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {selected && (
+        <HoleDetailModal
+          entry={selected.entry}
+          round={selected.round}
+          onClose={() => setSelected(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+interface HoleDetailModalProps {
+  entry: RoundEntry;
+  round: Round;
+  onClose: () => void;
+}
+
+function scoreColor(gross: number, par: number) {
+  if (gross < par) return 'text-red-400';
+  if (gross === par) return 'text-white';
+  return 'text-blue-400';
+}
+
+function HoleDetailModal({ entry, round, onClose }: HoleDetailModalProps) {
+  const { group, scoreDoc } = entry;
+  const holes = scoreDoc?.holes ?? [];
+  const lockedHoles = holes.filter((h) => h.locked);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60" />
+      <div
+        className="relative bg-gray-900 rounded-t-2xl max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-4 py-4 border-b border-gray-700 flex items-center justify-between shrink-0">
+          <div>
+            <p className="text-xs text-gray-400 uppercase tracking-wide">{round.name}</p>
+            <h2 className="text-lg font-bold">{group.name}</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 text-2xl p-2 -mr-2">✕</button>
+        </div>
+
+        {/* Wolf running totals */}
+        {round.format === 'wolf' && entry.playerPoints && (
+          <div className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex gap-4 flex-wrap shrink-0">
+            {entry.playerPoints.map((pp) => (
+              <div key={pp.name} className="text-center">
+                <p className="text-gray-400 text-xs">{pp.name.split(' ')[0]}</p>
+                <p className={`font-bold ${pp.pts > 0 ? 'text-green-400' : 'text-gray-500'}`}>{pp.pts}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Hole list */}
+        <div className="overflow-y-auto flex-1 p-4 flex flex-col gap-3">
+          {lockedHoles.length === 0 && (
+            <p className="text-gray-400 text-center py-8">No holes locked yet.</p>
+          )}
+
+          {holes.map((hole, i) => {
+            if (!hole.locked) return null;
+            const par = round.par[i] ?? 4;
+
+            return (
+              <div key={i} className="bg-gray-800 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="font-bold text-sm">Hole {i + 1}</p>
+                  <p className="text-gray-400 text-xs">Par {par}</p>
+                </div>
+
+                {round.format === 'wolf' && isWolfHole(hole) && (() => {
+                  const wolfHole = hole as WolfHoleScore;
+                  const isTied = wolfHole.points.every((p) => p.pts === 0);
+                  return (
+                    <div className="flex flex-col gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {group.players.map((p) => {
+                          const s = wolfHole.scores.find((sc) => sc.playerId === p.id);
+                          const pts = wolfHole.points.find((pt) => pt.playerId === p.id)?.pts ?? 0;
+                          const isWolf = wolfHole.wolfPlayerId === p.id;
+                          return (
+                            <div key={p.id} className="bg-gray-700/50 rounded-lg px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <span className="text-gray-200 text-xs">{p.name.split(' ')[0]}{isWolf ? ' 🐺' : ''}</span>
+                                <span className={`font-bold text-sm ${pts > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                                  {pts > 0 ? `+${pts}` : '—'}
+                                </span>
+                              </div>
+                              {s && s.gross > 0 && (
+                                <span className={`text-xs ${scoreColor(s.gross, par)}`}>{s.gross}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {isTied && (
+                        <p className="text-amber-300 text-xs text-center">Tied — carry {wolfHole.carry + 1}→next</p>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {round.format === 'bestBall' && isBestBallHole(hole) && (() => {
+                  const bbHole = hole as BestBallHoleScore;
+                  return (
+                    <div className="flex flex-col gap-1">
+                      {bbHole.scores.map((s) => {
+                        const name = group.players.find((p) => p.id === s.playerId)?.name ?? s.playerId;
+                        return (
+                          <div key={s.playerId} className="flex justify-between">
+                            <span className="text-gray-300 text-sm">{name}</span>
+                            <span className={`text-sm font-bold ${scoreColor(s.gross, par)}`}>{s.gross || '—'}</span>
+                          </div>
+                        );
+                      })}
+                      {bbHole.bestScore !== null && (
+                        <div className="mt-1 pt-1 border-t border-gray-700 flex justify-between">
+                          <span className="text-gray-400 text-xs">Best</span>
+                          <span className={`text-sm font-bold ${scoreColor(bbHole.bestScore, par)}`}>{bbHole.bestScore}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {(round.format === 'scramble' || round.format === 'gauntlet') && isScrambleHole(hole) && (() => {
+                  const sHole = hole as ScrambleHoleScore;
+                  return (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">Team score</span>
+                      <span className={`font-bold ${sHole.teamScore !== null ? scoreColor(sHole.teamScore, par) : 'text-gray-500'}`}>
+                        {sHole.teamScore ?? '—'}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {round.format === 'gauntlet' && isGauntletHole(hole) && (() => {
+                  const gHole = hole as GauntletHoleScore;
+                  return (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">
+                        {gHole.segment === 'bestBall' ? 'Best Ball' : gHole.segment === 'scramble' ? 'Scramble' : 'Alt Shot'}
+                      </span>
+                      <span className={`font-bold ${gHole.teamScore !== null ? scoreColor(gHole.teamScore, par) : 'text-gray-500'}`}>
+                        {gHole.teamScore ?? '—'}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
