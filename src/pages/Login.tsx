@@ -19,12 +19,17 @@ export function Login() {
       const session = JSON.parse(raw);
       if (session.tournamentId) {
         setTournamentCode(session.tournamentId);
-        getTournament(session.tournamentId).then((t) => {
-          if (t?.logoUrl) setLogoUrl(t.logoUrl);
-        }).catch(() => {});
       }
     } catch {}
   }, []);
+
+  useEffect(() => {
+    const code = tournamentCode.trim().toLowerCase();
+    if (!code) { setLogoUrl(null); return; }
+    getTournament(code).then((t) => {
+      setLogoUrl(t?.logoUrl ?? null);
+    }).catch(() => { setLogoUrl(null); });
+  }, [tournamentCode]);
 
   const backspace = () => setPin((p) => p.slice(0, -1));
   const clear = () => setPin('');
