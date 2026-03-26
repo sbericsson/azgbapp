@@ -78,11 +78,21 @@ function AppRoutes() {
   );
 }
 
+function DevBanner() {
+  if (!import.meta.env.DEV) return null;
+  return (
+    <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-black text-xs font-bold text-center py-1 pointer-events-none">
+      DEV — {import.meta.env.VITE_FIREBASE_PROJECT_ID}
+    </div>
+  );
+}
+
 export default function App() {
   const auth = useAuthProvider();
   return (
     <AuthContext.Provider value={auth}>
       <BrowserRouter>
+        <DevBanner />
         <AppRoutes />
       </BrowserRouter>
     </AuthContext.Provider>
