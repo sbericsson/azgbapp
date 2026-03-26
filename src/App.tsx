@@ -79,10 +79,11 @@ function AppRoutes() {
 }
 
 function DevBanner() {
-  if (!import.meta.env.DEV) return null;
+  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string;
+  if (!projectId?.includes('-dev')) return null;
   return (
     <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-black text-xs font-bold text-center py-1 pointer-events-none">
-      DEV — {import.meta.env.VITE_FIREBASE_PROJECT_ID}
+      DEV — {projectId}
     </div>
   );
 }
