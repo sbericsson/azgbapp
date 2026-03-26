@@ -534,7 +534,7 @@ export function Scorecard() {
             <button
               onClick={() => setShowLockConfirm(true)}
               disabled={saving}
-              className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40"
+              className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 flex items-center justify-center"
             >
               {saving ? 'Saving…' : 'Save & Lock 🔒'}
             </button>
