@@ -1,0 +1,38 @@
+server {
+    server_name dev.golfbender.app;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/app.azgbscore.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.azgbscore.com/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    access_log /var/log/nginx/dev-golfbender.access.log;
+    error_log  /var/log/nginx/dev-golfbender.error.log;
+
+    root /var/www/azgb-dev/dist;
+    index index.html;
+
+    location = /index.html {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+    }
+
+    location ~* \.(js|css|woff2|woff|ttf|svg|png|ico|webp)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+}
+
+server {
+    listen 80;
+    server_name dev.golfbender.app;
+    return 301 https://$host$request_uri;
+}
