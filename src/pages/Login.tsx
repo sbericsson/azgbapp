@@ -24,7 +24,7 @@ export function Login() {
   }, []);
 
   useEffect(() => {
-    const code = tournamentCode.trim().toLowerCase();
+    const code = tournamentCode.trim().toUpperCase();
     if (!code) { setLogoUrl(null); return; }
     getTournament(code).then((t) => {
       setLogoUrl(t?.logoUrl ?? null);
@@ -42,7 +42,7 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      const code = tournamentCode.trim().toLowerCase();
+      const code = tournamentCode.trim().toUpperCase();
 
       if (!code) {
         // App admin: blank tournament code
