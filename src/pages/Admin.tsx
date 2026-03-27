@@ -555,6 +555,7 @@ export function Admin() {
         tournamentName={tournament.name}
         savedGolfers={golfers}
         savedRounds={rounds}
+        onComplete={() => listRounds(tId).then(setRounds)}
       />
     );
   }

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { nanoid } from '../lib/nanoid';
 import { randomPin } from '../lib/pin';
 import {
@@ -51,6 +50,8 @@ interface WizardProps {
   savedGolfers: Golfer[];
   /** Initial rounds already saved to Firestore (for re-entry resume) */
   savedRounds: Round[];
+  /** Called when the wizard completes — parent re-fetches data to dismiss wizard */
+  onComplete: () => void;
 }
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -67,8 +68,8 @@ export function OnboardingWizard({
   tournamentName,
   savedGolfers,
   savedRounds,
+  onComplete,
 }: WizardProps) {
-  const navigate = useNavigate();
 
   // ── Golfer step state ─────────────────────────────────────────────────────
   const [golfers, setGolfers] = useState<WizardGolfer[]>(
@@ -605,7 +606,7 @@ export function OnboardingWizard({
             )}
 
             <button
-              onClick={() => navigate('/admin')}
+              onClick={onComplete}
               className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-2xl transition-colors"
             >
               Done — Go to Admin Panel

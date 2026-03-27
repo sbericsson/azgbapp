@@ -170,6 +170,13 @@ export function Login() {
         >
           {loading ? 'Checking…' : 'Enter'}
         </button>
+
+        <p className="text-center mt-6 text-gray-600 text-sm">
+          Running your own tournament?{' '}
+          <a href="/create" className="text-green-500 hover:text-green-400 underline">
+            Create one here
+          </a>
+        </p>
       </div>
     </div>
   );
