@@ -16,20 +16,34 @@ REPO_DIR="/var/www/azgb"
 DEV_ENV="/var/www/azgb-dev/.env"
 DEV_DIST="/var/www/azgb-dev/dist"
 
-echo "==> Pulling latest code…"
+echo "==> Fetching remote branches…"
 cd "$REPO_DIR"
 git fetch origin
 
-# Prompt for branch, defaulting to main
-DEFAULT_BRANCH="main"
-read -rp "Branch to deploy [${DEFAULT_BRANCH}]: " INPUT_BRANCH
-BRANCH="${INPUT_BRANCH:-$DEFAULT_BRANCH}"
+# Build numbered list of remote branches, main first
+mapfile -t BRANCHES < <(git branch -r | grep -v 'HEAD' | sed 's|origin/||' | sed 's/^[[:space:]]*//' | sort | { grep '^main$' || true; grep -v '^main$'; })
 
-# Verify the branch exists on origin
-if ! git rev-parse --verify "origin/${BRANCH}" &>/dev/null; then
-  echo "✗ Branch 'origin/${BRANCH}' not found. Aborting."
+if [ ${#BRANCHES[@]} -eq 0 ]; then
+  echo "✗ No remote branches found. Aborting."
   exit 1
 fi
+
+echo ""
+echo "Available branches:"
+for i in "${!BRANCHES[@]}"; do
+  printf "  %2d) %s\n" "$((i+1))" "${BRANCHES[$i]}"
+done
+echo ""
+
+while true; do
+  read -rp "Select branch to deploy [1]: " INPUT
+  INPUT="${INPUT:-1}"
+  if [[ "$INPUT" =~ ^[0-9]+$ ]] && [ "$INPUT" -ge 1 ] && [ "$INPUT" -le "${#BRANCHES[@]}" ]; then
+    BRANCH="${BRANCHES[$((INPUT-1))]}"
+    break
+  fi
+  echo "  Please enter a number between 1 and ${#BRANCHES[@]}."
+done
 
 PREV_HEAD=$(git rev-parse HEAD)
 git reset --hard "origin/${BRANCH}"
