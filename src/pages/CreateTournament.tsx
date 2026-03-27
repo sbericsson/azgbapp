@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { createTournament, getTournament } from '../lib/firestore';
 import { generateTournamentCode } from '../lib/nanoid';
 
 type Step = 'form' | 'success';
 
 export function CreateTournament() {
-  const navigate = useNavigate();
   const [step, setStep] = useState<Step>('form');
   const [tournamentCode, setTournamentCode] = useState('');
   const [codeCopied, setCodeCopied] = useState(false);
@@ -127,7 +125,7 @@ export function CreateTournament() {
                   loginAt: Date.now(),
                 }),
               );
-              navigate('/admin');
+              window.location.replace('/admin');
             }}
             className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold py-4 rounded-2xl transition-colors text-lg"
           >
