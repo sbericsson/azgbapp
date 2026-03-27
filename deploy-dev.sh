@@ -19,8 +19,21 @@ DEV_DIST="/var/www/azgb-dev/dist"
 echo "==> Pulling latest code…"
 cd "$REPO_DIR"
 git fetch origin
+
+# Prompt for branch, defaulting to main
+DEFAULT_BRANCH="main"
+read -rp "Branch to deploy [${DEFAULT_BRANCH}]: " INPUT_BRANCH
+BRANCH="${INPUT_BRANCH:-$DEFAULT_BRANCH}"
+
+# Verify the branch exists on origin
+if ! git rev-parse --verify "origin/${BRANCH}" &>/dev/null; then
+  echo "✗ Branch 'origin/${BRANCH}' not found. Aborting."
+  exit 1
+fi
+
 PREV_HEAD=$(git rev-parse HEAD)
-git reset --hard origin/main
+git reset --hard "origin/${BRANCH}"
+echo "  Deploying branch: ${BRANCH}"
 echo ""
 git diff --stat "$PREV_HEAD" HEAD
 echo ""
