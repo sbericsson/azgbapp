@@ -79,7 +79,7 @@ export function CreateTournament() {
           <div className="bg-gray-800 rounded-2xl p-5 flex flex-col gap-2">
             <p className="text-gray-400 text-xs uppercase tracking-widest">Tournament Code</p>
             <p className="text-white text-4xl font-bold tracking-widest font-mono">{tournamentCode}</p>
-            <p className="text-gray-500 text-xs">Share this link: golfbender.app/?code={tournamentCode}</p>
+            <p className="text-gray-500 text-xs">Share this link: {window.location.host}/?code={tournamentCode}</p>
             <button
               onClick={() => copyToClipboard(tournamentCode, setCodeCopied)}
               className="mt-2 w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-xl transition-colors"

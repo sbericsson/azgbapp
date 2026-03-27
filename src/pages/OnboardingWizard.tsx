@@ -224,7 +224,7 @@ export function OnboardingWizard({
       `Tournament code: ${tournamentId}`,
       `Your group PIN: ${group.pin}`,
       round ? `Round: ${round.name}` : '',
-      `Start here: golfbender.app/?code=${tournamentId}`,
+      `Start here: ${window.location.host}/?code=${tournamentId}`,
     ]
       .filter(Boolean)
       .join('\n');
