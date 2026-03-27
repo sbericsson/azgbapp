@@ -1183,9 +1183,10 @@ export function Admin() {
                               `🏌️ ${tournament?.name ?? 'Golf Tournament'}\n` +
                               `Round: ${r.name}\n` +
                               `Group: ${g.name}\n` +
-                              `Players: ${players}\n` +
-                              `PIN: ${g.pin}\n\n` +
-                              `Enter scores & follow the leaderboard here:\n${window.location.origin}`;
+                              `Players: ${players}\n\n` +
+                              `Tournament code: ${tId}\n` +
+                              `Group PIN: ${g.pin}\n\n` +
+                              `Login here: ${window.location.origin}/?code=${tId}`;
                             return (
                               <>
                                 <a

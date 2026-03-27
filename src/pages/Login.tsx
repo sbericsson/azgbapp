@@ -13,6 +13,14 @@ export function Login() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Pre-fill from ?code= URL param (shared login links)
+    const params = new URLSearchParams(window.location.search);
+    const urlCode = params.get('code');
+    if (urlCode) {
+      setTournamentCode(urlCode.toUpperCase());
+      return;
+    }
+    // Fall back to last session
     const raw = localStorage.getItem('azgb_session');
     if (!raw) return;
     try {
