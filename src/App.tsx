@@ -10,7 +10,6 @@ import { Leaderboard } from './pages/Leaderboard';
 import { PublicScorecard } from './pages/PublicScorecard';
 import { PrintResults } from './pages/PrintResults';
 import { PublicResults } from './pages/PublicResults';
-import { LaunchGate } from './components/LaunchGate';
 
 function Spinner() {
   return (
@@ -61,20 +60,18 @@ function BypassRoute() {
 
 function AppRoutes() {
   return (
-    <LaunchGate>
-      <Routes>
-        <Route path="/bypass" element={<BypassRoute />} />
-        <Route path="/" element={<RootRoute />} />
-        <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />
-        <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
-        <Route path="/admin/results" element={<ProtectedAdminRoute element={<PrintResults />} />} />
-        <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
-        <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
-        <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
-        <Route path="/results/:tournamentId" element={<PublicResults />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </LaunchGate>
+    <Routes>
+      <Route path="/bypass" element={<BypassRoute />} />
+      <Route path="/" element={<RootRoute />} />
+      <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />
+      <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
+      <Route path="/admin/results" element={<ProtectedAdminRoute element={<PrintResults />} />} />
+      <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
+      <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
+      <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />
+      <Route path="/results/:tournamentId" element={<PublicResults />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 

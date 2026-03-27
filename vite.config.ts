@@ -48,5 +48,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    exclude: ['.claude/**', 'node_modules/**'],
   },
 })

@@ -15,6 +15,7 @@ import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
 import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 import { nanoid } from '../lib/nanoid';
+import { randomPin } from '../lib/pin';
 
 interface GroupSummary {
   groupId: string;
@@ -57,13 +58,6 @@ function computeGroupSummary(
   return { groupId: group.id, score: scrambleTotalToPar(sHoles, round.par), holesCompleted };
 }
 
-function randomPin(excludePin?: string) {
-  let pin: string;
-  do {
-    pin = String(Math.floor(1000 + Math.random() * 9000));
-  } while (pin === excludePin);
-  return pin;
-}
 
 function cyclePar(val: number) {
   return val === 3 ? 4 : val === 4 ? 5 : 3;
