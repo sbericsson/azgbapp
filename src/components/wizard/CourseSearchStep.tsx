@@ -101,6 +101,12 @@ export function CourseSearchStep({ value, onChange }: Props) {
     setSelected(false);
     setSearchError('');
 
+    // No API key — treat the search field as a plain name input
+    if (!API_KEY) {
+      onChange({ ...value, name: q });
+      return;
+    }
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!q.trim() || q.trim().length < 3) {
       setResults([]);
@@ -109,10 +115,6 @@ export function CourseSearchStep({ value, onChange }: Props) {
     }
 
     debounceRef.current = setTimeout(async () => {
-      if (!API_KEY) {
-        setSearchError('Course search requires VITE_GOLF_COURSE_API_KEY in .env.local');
-        return;
-      }
       setSearching(true);
       try {
         // Endpoint per design doc — verify against golfcourseapi.com docs once you have a key
@@ -219,16 +221,20 @@ export function CourseSearchStep({ value, onChange }: Props) {
       {/* Manual / override fields — always visible once name is set */}
       {(selected || !API_KEY || value.name) && (
         <>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-gray-400 text-sm font-medium">Course Name (edit if needed)</label>
-            <input
-              type="text"
-              value={value.name}
-              onChange={(e) => handleManualChange('name', e.target.value)}
-              placeholder="Course name"
-              className="bg-gray-800 text-white placeholder-gray-600 rounded-xl px-4 py-3 text-base outline-none focus:ring-2 focus:ring-green-500"
-            />
-          </div>
+          {/* When API key is present, show the editable name field as an override.
+              When no API key, the top search field IS the name field — skip the duplicate. */}
+          {API_KEY && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-gray-400 text-sm font-medium">Course Name (edit if needed)</label>
+              <input
+                type="text"
+                value={value.name}
+                onChange={(e) => handleManualChange('name', e.target.value)}
+                placeholder="Course name"
+                className="bg-gray-800 text-white placeholder-gray-600 rounded-xl px-4 py-3 text-base outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+          )}
 
           <div className="flex gap-3">
             <div className="flex flex-col gap-1.5 w-24">
