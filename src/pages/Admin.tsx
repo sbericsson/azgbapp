@@ -16,7 +16,6 @@ import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 import { nanoid } from '../lib/nanoid';
 import { randomPin } from '../lib/pin';
-import { OnboardingWizard } from './OnboardingWizard';
 
 interface GroupSummary {
   groupId: string;
@@ -544,21 +543,6 @@ export function Admin() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
-  // Show onboarding wizard for self-service tournaments that haven't been set up yet.
-  // Once rounds exist the wizard is dismissed and the standard admin panel is shown.
-  // On re-entry, the wizard resumes from the first step that's still missing data.
-  if (tournament?.selfService && rounds.length === 0) {
-    return (
-      <OnboardingWizard
-        tournamentId={tId}
-        adminPin={tournament.adminPin}
-        tournamentName={tournament.name}
-        savedGolfers={golfers}
-        savedRounds={rounds}
-        onComplete={() => listRounds(tId).then(setRounds)}
-      />
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
