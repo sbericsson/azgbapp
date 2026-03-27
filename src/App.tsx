@@ -10,6 +10,7 @@ import { Leaderboard } from './pages/Leaderboard';
 import { PublicScorecard } from './pages/PublicScorecard';
 import { PrintResults } from './pages/PrintResults';
 import { PublicResults } from './pages/PublicResults';
+import { CreateTournament } from './pages/CreateTournament';
 
 function Spinner() {
   return (
@@ -62,6 +63,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/bypass" element={<BypassRoute />} />
+      <Route path="/create" element={<CreateTournament />} />
       <Route path="/" element={<RootRoute />} />
       <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />
       <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />

@@ -43,6 +43,7 @@ export interface Tournament {
   adminPin: string;
   createdAt: number;
   logoUrl?: string;
+  selfService?: boolean; // true when created via /create; triggers onboarding wizard
 }
 
 export interface AppConfig {
