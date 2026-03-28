@@ -22,12 +22,8 @@ import {
 import { computeBestScore, isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
 import { isGauntletHole, getAltShotTeeOffIndex } from '../lib/scoring/gauntlet';
-import {
-  generateWolfFeedback,
-  generateBestBallFeedback,
-  generateScrambleFeedback,
-} from '../lib/scoring/feedback';
-import { getAIFeedback } from '../lib/scoring/feedbackAI';
+import { generateWolfFeedback } from '../lib/scoring/feedback';
+import { buildFallbackFeedback, getAIFeedback } from '../lib/scoring/feedbackAI';
 import type { AIFeedbackContext } from '../lib/scoring/feedbackAI';
 import type { LeaderboardEntry } from '../hooks/useLeaderboard';
 
@@ -47,6 +43,7 @@ export function Scorecard() {
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const [feedbackAutoDismiss, setFeedbackAutoDismiss] = useState(true);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
+  const feedbackHistoryRef = useRef<string[]>([]);
 
   const players = group?.players ?? [];
   const hasJumpedToCurrentHole = useRef(false);
@@ -98,12 +95,6 @@ export function Scorecard() {
 
   const leaderboardRound = round?.format !== 'wolf' ? round : null;
   const { entries: lbEntries } = useLeaderboard(tournamentId, leaderboardRound, allGroups);
-
-  const myRank = group && lbEntries.length > 0
-    ? lbEntries.findIndex((e) => e.groupId === group.id) + 1
-    : null;
-  const rankForFeedback = myRank && myRank > 0 ? myRank : null;
-
   // Swipe to navigate holes
   useEffect(() => {
     let startX = 0;
@@ -130,6 +121,7 @@ export function Scorecard() {
     );
   }
 
+  const activeGroup = group;
   const isComplete = round.status === 'complete';
   const par = round.par[currentHole] ?? 4;
   const hole = holes[currentHole];
@@ -272,12 +264,73 @@ export function Scorecard() {
     }
 
     const leaderboard = lbEntriesSnap.map((e) => ({
+      groupId: e.groupId,
       groupName: e.groupName,
       score: e.score,
       holesPlayed: e.holesCompleted,
     }));
 
-    return { format, roundName: round!.name, players: playerRunning, holeHistory, currentHole: currentHoleCtx, runningTotal, rank: rankForFeedback, totalGroups: allGroups.length, leaderboard, ourGroupName: groupName };
+    const ourHolesCompleted = mergedHoles.filter((h) => h?.locked).length;
+    const groupsForBoard = allGroups.length > 0
+      ? allGroups
+      : [{ ...activeGroup, name: groupName }];
+    const boardWithCurrent = groupsForBoard
+      .map((g) => {
+        if (g.id === activeGroup.id) {
+          return {
+            groupId: g.id,
+            groupName,
+            score: runningTotal,
+            holesPlayed: ourHolesCompleted,
+          };
+        }
+
+        const existing = leaderboard.find((entry) => entry.groupId === g.id);
+        return {
+          groupId: g.id,
+          groupName: existing?.groupName ?? g.name,
+          score: existing?.score ?? 0,
+          holesPlayed: existing?.holesPlayed ?? 0,
+        };
+      })
+      .sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        if (a.holesPlayed !== b.holesPlayed) return b.holesPlayed - a.holesPlayed;
+        return a.groupName.localeCompare(b.groupName);
+      });
+
+    const ourIndex = boardWithCurrent.findIndex((entry) => entry.groupId === activeGroup.id);
+    const rank = ourIndex >= 0 ? ourIndex + 1 : null;
+    const leaderScore = boardWithCurrent[0]?.score ?? runningTotal;
+    const strokesFromLead = boardWithCurrent.length > 0 ? runningTotal - leaderScore : null;
+    const teamsAtLead = boardWithCurrent.filter((entry) => entry.score === leaderScore).length;
+    const standing: AIFeedbackContext['standing'] =
+      boardWithCurrent.length <= 1
+        ? 'solo'
+        : strokesFromLead === 0
+          ? (teamsAtLead > 1 ? 'tiedLead' : 'leading')
+          : 'trailing';
+
+    return {
+      format,
+      roundName: round!.name,
+      totalHoles: round!.holes,
+      players: playerRunning,
+      holeHistory,
+      currentHole: currentHoleCtx,
+      runningTotal,
+      rank,
+      totalGroups: boardWithCurrent.length,
+      standing,
+      strokesFromLead,
+      leaderboard: boardWithCurrent.map(({ groupName: name, score, holesPlayed }) => ({
+        groupName: name,
+        score,
+        holesPlayed,
+      })),
+      ourGroupName: groupName,
+      recentFeedback: feedbackHistoryRef.current.slice(-3),
+    };
   }
 
   const handleLockHole = async () => {
@@ -314,7 +367,9 @@ export function Scorecard() {
     if (isWolfHole(locked)) {
       // Wolf: synchronous static feedback, auto-dismiss
       setFeedbackAutoDismiss(true);
-      setFeedbackMessage(generateWolfFeedback(locked as WolfHoleScore, players, par));
+      const message = generateWolfFeedback(locked as WolfHoleScore, players, par);
+      feedbackHistoryRef.current = [...feedbackHistoryRef.current.slice(-4), message];
+      setFeedbackMessage(message);
     } else {
       // bestBall / scramble / gauntlet: async AI feedback with static fallback
       setFeedbackLoading(true);
@@ -324,29 +379,15 @@ export function Scorecard() {
         currentHole,
         holes,
         lbEntries,
-        group.name,
+        activeGroup.name,
       );
       let aiSucceeded = false;
       getAIFeedback(aiCtx)
         .then((msg): string => { aiSucceeded = true; return msg; })
-        .catch((): string => {
-          if (isBestBallHole(locked)) {
-            return generateBestBallFeedback(
-              locked as BestBallHoleScore, par, rankForFeedback, allGroups.length, currentHole,
-            );
-          } else if (isScrambleHole(locked)) {
-            return generateScrambleFeedback(
-              locked as ScrambleHoleScore, par, rankForFeedback, allGroups.length, currentHole,
-            );
-          } else {
-            return generateScrambleFeedback(
-              { teamScore: (locked as GauntletHoleScore).teamScore, locked: true },
-              par, rankForFeedback, allGroups.length, currentHole,
-            );
-          }
-        })
+        .catch((): string => buildFallbackFeedback(aiCtx))
         .then((msg) => {
           setFeedbackAutoDismiss(!aiSucceeded);
+          feedbackHistoryRef.current = [...feedbackHistoryRef.current.slice(-4), msg];
           setFeedbackMessage(msg);
           setFeedbackLoading(false);
         });
