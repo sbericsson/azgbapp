@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface Props {
   message: string | null;
@@ -8,21 +8,13 @@ interface Props {
 }
 
 export function HoleFeedbackToast({ message, loading = false, autoDismiss = true, onDismiss }: Props) {
-  const [visible, setVisible] = useState(false);
   const onDismissRef = useRef(onDismiss);
-  onDismissRef.current = onDismiss;
+
+  useEffect(() => {
+    onDismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   const isOpen = message !== null || loading;
-
-  // Slide in when open, slide out when closed
-  useEffect(() => {
-    if (!isOpen) {
-      setVisible(false);
-      return;
-    }
-    const showTimer = setTimeout(() => setVisible(true), 10);
-    return () => clearTimeout(showTimer);
-  }, [isOpen]);
 
   // 10s auto-dismiss — only starts once message arrives, and only when requested
   useEffect(() => {
@@ -35,9 +27,7 @@ export function HoleFeedbackToast({ message, loading = false, autoDismiss = true
 
   return (
     <div
-      className={`fixed inset-x-0 bottom-0 z-40 transition-transform duration-300 ease-out ${
-        visible ? 'translate-y-0' : 'translate-y-full'
-      }`}
+      className="fixed inset-x-0 bottom-0 z-40"
       onClick={loading ? undefined : onDismiss}
     >
       <div className="bg-gray-900 min-h-[55vh] flex flex-col items-center justify-center px-8 py-10 rounded-t-3xl shadow-2xl border-t border-gray-700">

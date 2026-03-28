@@ -23,22 +23,28 @@ export function useLeaderboard(
   round: Round | null,
   groups: Group[],
 ): { entries: LeaderboardEntry[]; loading: boolean } {
-  const [scoreDocs, setScoreDocs] = useState<GroupScoreDoc[]>([]);
-  const [loading, setLoading] = useState(true);
+  const roundId = round?.id ?? null;
+  const [scoreState, setScoreState] = useState<{
+    roundId: string | null;
+    docs: GroupScoreDoc[];
+  }>({
+    roundId: null,
+    docs: [],
+  });
 
   useEffect(() => {
     if (!tournamentId || !round) {
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     const unsub = subscribeAllScores(tournamentId, round.id, (docs) => {
-      setScoreDocs(docs);
-      setLoading(false);
+      setScoreState({ roundId: round.id, docs });
     });
     return unsub;
-  }, [tournamentId, round?.id]);
+  }, [tournamentId, round]);
+
+  const scoreDocs = scoreState.roundId === roundId ? scoreState.docs : [];
+  const loading = Boolean(tournamentId && round) && scoreState.roundId !== roundId;
 
   const entries: LeaderboardEntry[] = groups
     .map((group) => {

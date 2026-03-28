@@ -94,7 +94,7 @@ export function useGroup(
     );
 
     return unsub;
-  }, [tournamentId, round?.id, groupId]);
+  }, [groupId, players, round, tournamentId]);
 
   const setLocalHole = useCallback(
     (holeIndex: number, hole: HoleScore) => {

@@ -94,16 +94,21 @@ function computeRoundEntries(
 
 export function PrintResults() {
   const { tournament, tournamentId } = useContext(AuthContext);
-  const [results, setResults] = useState<RoundResult[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
+  const requestKey = `${tournamentId ?? 'none'}:${refreshKey}`;
+  const [resultState, setResultState] = useState<{
+    requestKey: string;
+    results: RoundResult[];
+  }>({
+    requestKey: '',
+    results: [],
+  });
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
 
     (async () => {
-      if (!tournamentId) { setLoading(false); return; }
+      if (!tournamentId) return;
       const [rounds, courses] = await Promise.all([
         listRounds(tournamentId),
         listCourses(tournamentId),
@@ -135,13 +140,15 @@ export function PrintResults() {
       );
 
       if (!cancelled) {
-        setResults(roundResults);
-        setLoading(false);
+        setResultState({ requestKey, results: roundResults });
       }
     })();
 
     return () => { cancelled = true; };
-  }, [refreshKey, tournamentId]);
+  }, [requestKey, tournamentId]);
+
+  const loading = Boolean(tournamentId) && resultState.requestKey !== requestKey;
+  const results = resultState.requestKey === requestKey ? resultState.results : [];
 
   const dayLabel = (day: string) => {
     if (day === 'saturday_am') return 'Saturday AM';

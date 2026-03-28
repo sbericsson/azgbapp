@@ -73,7 +73,10 @@ export function Scorecard() {
     if (hasJumpedToCurrentHole.current || loading || holes.length === 0) return;
     hasJumpedToCurrentHole.current = true;
     const firstUnlocked = holes.findIndex((h) => !h.locked);
-    if (firstUnlocked > 0) setCurrentHole(firstUnlocked);
+    if (firstUnlocked > 0) {
+      const timer = window.setTimeout(() => setCurrentHole(firstUnlocked), 0);
+      return () => window.clearTimeout(timer);
+    }
   }, [loading, holes]);
 
   useEffect(() => {
@@ -91,7 +94,7 @@ export function Scorecard() {
   useEffect(() => {
     if (!roundId || !round || round.format === 'wolf' || !tournamentId) return;
     return subscribeGroupsByRound(tournamentId, roundId, setAllGroups);
-  }, [roundId, round?.id, round?.format, tournamentId]);
+  }, [roundId, round, tournamentId]);
 
   const leaderboardRound = round?.format !== 'wolf' ? round : null;
   const { entries: lbEntries } = useLeaderboard(tournamentId, leaderboardRound, allGroups);

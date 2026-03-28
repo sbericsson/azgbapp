@@ -16,6 +16,7 @@ const formatLabel: Record<string, string> = {
   wolf: 'Wolf',
   bestBall: 'Best Ball',
   scramble: 'Scramble',
+  gauntlet: 'Gauntlet',
 };
 
 export function Home() {
@@ -38,7 +39,7 @@ export function Home() {
         setCourseMap(new Map(allCourses.map((c) => [c.id, c])));
       })
       .finally(() => setLoading(false));
-  }, [group?.id, tournamentId]);
+  }, [group, tournamentId]);
 
   const byDay = dayOrder.reduce<Record<string, Round[]>>((acc, day) => {
     const dayRounds = rounds.filter((r) => r.day === day);

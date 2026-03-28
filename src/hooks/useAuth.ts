@@ -46,6 +46,32 @@ interface StoredSession {
   loginAt: number;
 }
 
+const DEFAULT_AUTH_STATE: AuthState = {
+  tournamentId: null,
+  tournament: null,
+  group: null,
+  isAdmin: false,
+  isAppAdmin: false,
+  loading: true,
+};
+
+function readStoredSession(): StoredSession | null {
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+
+  try {
+    const session = JSON.parse(raw) as StoredSession;
+    if (!session.loginAt || Date.now() - session.loginAt > SESSION_TTL_MS) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
 export const AuthContext = createContext<AuthContextValue>({
   tournamentId: null,
   tournament: null,
@@ -67,28 +93,18 @@ export function useAuth() {
 }
 
 export function useAuthProvider(): AuthContextValue {
-  const [state, setState] = useState<AuthState>({
-    tournamentId: null,
-    tournament: null,
-    group: null,
-    isAdmin: false,
-    isAppAdmin: false,
-    loading: true,
+  const [state, setState] = useState<AuthState>(() => {
+    const session = readStoredSession();
+    return session ? DEFAULT_AUTH_STATE : { ...DEFAULT_AUTH_STATE, loading: false };
   });
 
   // Restore session on mount
   useEffect(() => {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) {
-      setState((s) => ({ ...s, loading: false }));
+    const session = readStoredSession();
+    if (!session) {
       return;
     }
-    const session: StoredSession = JSON.parse(raw);
-    if (!session.loginAt || Date.now() - session.loginAt > SESSION_TTL_MS) {
-      localStorage.removeItem(SESSION_KEY);
-      setState((s) => ({ ...s, loading: false }));
-      return;
-    }
+
     (async () => {
       // App admin session
       if (session.isAppAdmin) {
@@ -119,13 +135,13 @@ export function useAuthProvider(): AuthContextValue {
       // Tournament admin or group session — tournamentId required
       if (!session.tournamentId) {
         localStorage.removeItem(SESSION_KEY);
-        setState((s) => ({ ...s, loading: false }));
+        setState({ ...DEFAULT_AUTH_STATE, loading: false });
         return;
       }
       const tournament = await getTournament(session.tournamentId).catch(() => null);
       if (!tournament) {
         localStorage.removeItem(SESSION_KEY);
-        setState((s) => ({ ...s, loading: false }));
+        setState({ ...DEFAULT_AUTH_STATE, loading: false });
         return;
       }
       if (session.isAdmin) {
@@ -150,7 +166,7 @@ export function useAuthProvider(): AuthContextValue {
           loading: false,
         });
       } else {
-        setState((s) => ({ ...s, loading: false }));
+        setState({ ...DEFAULT_AUTH_STATE, loading: false });
       }
     })();
   }, []);

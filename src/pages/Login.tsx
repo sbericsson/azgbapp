@@ -28,7 +28,9 @@ export function Login() {
       if (session.tournamentId) {
         setTournamentCode(session.tournamentId);
       }
-    } catch {}
+    } catch {
+      // Ignore malformed persisted sessions and fall back to a blank login form.
+    }
   }, []);
 
   useEffect(() => {

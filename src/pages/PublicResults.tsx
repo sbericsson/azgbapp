@@ -113,24 +113,43 @@ interface SelectedDetail {
 
 export function PublicResults() {
   const { tournamentId } = useParams<{ tournamentId: string }>();
-  const [tournament, setTournament] = useState<Tournament | null>(null);
-  const [results, setResults] = useState<RoundResult[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
   const [selected, setSelected] = useState<SelectedDetail | null>(null);
+  const requestKey = tournamentId ?? 'missing';
+  const [pageState, setPageState] = useState<{
+    requestKey: string;
+    tournament: Tournament | null;
+    results: RoundResult[];
+    notFound: boolean;
+  }>({
+    requestKey: '',
+    tournament: null,
+    results: [],
+    notFound: false,
+  });
 
   // Stable refs for live-update callbacks to avoid stale closures
   const groupsByRoundRef = useRef<Record<string, Group[]>>({});
   const subscriptionsRef = useRef<Unsubscribe[]>([]);
 
   useEffect(() => {
-    if (!tournamentId) { setNotFound(true); setLoading(false); return; }
+    if (!tournamentId) {
+      return;
+    }
     let cancelled = false;
 
     (async () => {
       const t = await getTournament(tournamentId).catch(() => null);
-      if (!t) { if (!cancelled) { setNotFound(true); setLoading(false); } return; }
-      if (!cancelled) setTournament(t);
+      if (!t) {
+        if (!cancelled) {
+          setPageState({
+            requestKey,
+            tournament: null,
+            results: [],
+            notFound: true,
+          });
+        }
+        return;
+      }
 
       const [rounds, courses] = await Promise.all([
         listRounds(tournamentId),
@@ -162,8 +181,12 @@ export function PublicResults() {
       );
 
       if (cancelled) return;
-      setResults(roundResults);
-      setLoading(false);
+      setPageState({
+        requestKey,
+        tournament: t,
+        results: roundResults,
+        notFound: false,
+      });
 
       // Subscribe to live score updates for active rounds
       visibleRounds
@@ -175,8 +198,15 @@ export function PublicResults() {
             const sortedEntries = [...entries].sort((a, b) =>
               round.format === 'wolf' ? b.score - a.score : a.score - b.score,
             );
-            setResults((prev) =>
-              prev.map((r) => r.round.id === round.id ? { ...r, entries: sortedEntries } : r),
+            setPageState((prev) =>
+              prev.requestKey !== requestKey
+                ? prev
+                : {
+                    ...prev,
+                    results: prev.results.map((r) =>
+                      r.round.id === round.id ? { ...r, entries: sortedEntries } : r,
+                    ),
+                  },
             );
           });
           subscriptionsRef.current.push(unsub);
@@ -188,7 +218,12 @@ export function PublicResults() {
       subscriptionsRef.current.forEach((unsub) => unsub());
       subscriptionsRef.current = [];
     };
-  }, [tournamentId]);
+  }, [requestKey, tournamentId]);
+
+  const loading = Boolean(tournamentId) && pageState.requestKey !== requestKey;
+  const tournament = pageState.requestKey === requestKey ? pageState.tournament : null;
+  const results = pageState.requestKey === requestKey ? pageState.results : [];
+  const notFound = !tournamentId || (pageState.requestKey === requestKey && pageState.notFound);
 
   if (notFound) {
     return (

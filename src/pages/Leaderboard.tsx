@@ -52,10 +52,17 @@ export function Leaderboard() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-xs text-green-400">Live</span>
-        </div>
+        {round?.status === 'active' && (
+          <div className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-xs text-green-400">Live</span>
+          </div>
+        )}
+        {round?.status === 'complete' && (
+          <span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded-full font-medium">
+            Complete
+          </span>
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto p-4">
