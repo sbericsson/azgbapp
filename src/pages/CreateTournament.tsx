@@ -7,8 +7,7 @@ type Step = 'form' | 'success';
 export function CreateTournament() {
   const [step, setStep] = useState<Step>('form');
   const [tournamentCode, setTournamentCode] = useState('');
-  const [codeCopied, setCodeCopied] = useState(false);
-  const [pinCopied, setPinCopied] = useState(false);
+  const [copiedField, setCopiedField] = useState<'code' | 'pin' | null>(null);
   const [savedConfirmed, setSavedConfirmed] = useState(false);
 
   // Form state
@@ -34,10 +33,10 @@ export function CreateTournament() {
     setSubmitting(true);
     try {
       // Generate a code and check for collision (astronomically rare at 380B combos,
-      // but we check once to be safe — not a security gate)
+      // but we retry up to 5 times to be safe — not a security gate)
       let code = generateTournamentCode();
-      const existing = await getTournament(code);
-      if (existing) {
+      for (let i = 0; i < 4; i++) {
+        if (!(await getTournament(code))) break;
         code = generateTournamentCode();
       }
 
@@ -58,10 +57,10 @@ export function CreateTournament() {
     }
   }
 
-  function copyToClipboard(text: string, setCopied: (v: boolean) => void) {
+  function copyToClipboard(text: string, field: 'code' | 'pin') {
     navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
     });
   }
 
@@ -81,10 +80,10 @@ export function CreateTournament() {
             <p className="text-white text-4xl font-bold tracking-widest font-mono">{tournamentCode}</p>
             <p className="text-gray-500 text-xs">Share this link: {window.location.host}/?code={tournamentCode}</p>
             <button
-              onClick={() => copyToClipboard(tournamentCode, setCodeCopied)}
+              onClick={() => copyToClipboard(tournamentCode, 'code')}
               className="mt-2 w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-xl transition-colors"
             >
-              {codeCopied ? 'Copied!' : 'Copy Code'}
+              {copiedField === 'code' ? 'Copied!' : 'Copy Code'}
             </button>
           </div>
 
@@ -94,10 +93,10 @@ export function CreateTournament() {
             <p className="text-white text-4xl font-bold tracking-widest font-mono">{adminPin}</p>
             <p className="text-gray-500 text-xs">You'll need this to manage your tournament.</p>
             <button
-              onClick={() => copyToClipboard(adminPin, setPinCopied)}
+              onClick={() => copyToClipboard(adminPin, 'pin')}
               className="mt-2 w-full bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium py-2 rounded-xl transition-colors"
             >
-              {pinCopied ? 'Copied!' : 'Copy PIN'}
+              {copiedField === 'pin' ? 'Copied!' : 'Copy PIN'}
             </button>
           </div>
 

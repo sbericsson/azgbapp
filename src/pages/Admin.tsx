@@ -137,12 +137,8 @@ export function Admin() {
   const [coursesOpen, setCoursesOpen] = useState(false);
   const [addingCourse, setAddingCourse] = useState(false);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
-  const [cName, setCName] = useState('');
-  const [cHoles, setCHoles] = useState(18);
-  const [cPar, setCPar] = useState<number[]>(defaultPar(18));
-  const [cSaving, setCSaving] = useState(false);
-  // CourseSearchStep drives this; we sync it into cName/cHoles/cPar
   const [cSearch, setCSearch] = useState<CourseSearchResult>({ name: '', holes: 18, par: defaultPar(18) });
+  const [cSaving, setCSaving] = useState(false);
 
   // Rounds
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -215,25 +211,14 @@ export function Admin() {
 
   const openAddCourse = () => {
     setEditingCourseId(null);
-    const blank = { name: '', holes: 18, par: defaultPar(18) };
-    setCSearch(blank);
-    setCName(''); setCHoles(18); setCPar(defaultPar(18));
+    setCSearch({ name: '', holes: 18, par: defaultPar(18) });
     setAddingCourse(true);
   };
 
   const openEditCourse = (c: Course) => {
     setAddingCourse(false);
     setEditingCourseId(c.id);
-    const existing = { name: c.name, holes: c.holes, par: [...c.par] };
-    setCSearch(existing);
-    setCName(c.name); setCHoles(c.holes); setCPar([...c.par]);
-  };
-
-  const handleCourseSearchChange = (r: CourseSearchResult) => {
-    setCSearch(r);
-    setCName(r.name);
-    setCHoles(r.holes);
-    setCPar(r.par);
+    setCSearch({ name: c.name, holes: c.holes, par: [...c.par] });
   };
 
   const cancelCourseForm = () => {
@@ -242,29 +227,30 @@ export function Admin() {
   };
 
   const cycleCPar = (i: number) =>
-    setCPar((prev) => prev.map((v, idx) => (idx === i ? cyclePar(v) : v)));
+    setCSearch((s) => ({ ...s, par: s.par.map((v, idx) => (idx === i ? cyclePar(v) : v)) }));
 
   const saveCourse = async () => {
-    if (!cName.trim()) return;
+    if (!cSearch.name.trim()) return;
     setCSaving(true);
-    const par = cPar.slice(0, cHoles);
+    const { name, holes, par } = cSearch;
     const id = nanoid();
-    await createCourse(tId, id, { name: cName.trim(), holes: cHoles, par });
-    const course: Course = { id, name: cName.trim(), holes: cHoles, par };
+    await createCourse(tId, id, { name: name.trim(), holes, par: par.slice(0, holes) });
+    const course: Course = { id, name: name.trim(), holes, par: par.slice(0, holes) };
     setCourses((cs) => [...cs, course].sort((a, b) => a.name.localeCompare(b.name)));
     setAddingCourse(false);
     setCSaving(false);
   };
 
   const saveEditCourse = async (courseId: string) => {
-    if (!cName.trim()) return;
+    if (!cSearch.name.trim()) return;
     setCSaving(true);
-    const par = cPar.slice(0, cHoles);
-    await updateCourse(tId, courseId, { name: cName.trim(), holes: cHoles, par });
+    const { name, holes, par } = cSearch;
+    const trimmedPar = par.slice(0, holes);
+    await updateCourse(tId, courseId, { name: name.trim(), holes, par: trimmedPar });
     setCourses((cs) =>
       cs
         .map((c) =>
-          c.id === courseId ? { ...c, name: cName.trim(), holes: cHoles, par } : c,
+          c.id === courseId ? { ...c, name: name.trim(), holes, par: trimmedPar } : c,
         )
         .sort((a, b) => a.name.localeCompare(b.name)),
     );
@@ -743,13 +729,13 @@ export function Admin() {
                   /* ── Inline course edit ── */
                   <div key={c.id} className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                     <p className="text-sm font-semibold text-gray-200">Edit Course</p>
-                    <CourseSearchStep value={cSearch} onChange={handleCourseSearchChange} />
+                    <CourseSearchStep value={cSearch} onChange={setCSearch} />
                     <p className="text-gray-400 text-xs">Tap a hole to cycle par (3 / 4 / 5):</p>
-                    <ParEditor par={cPar} holes={cHoles} onCycle={cycleCPar} />
+                    <ParEditor par={cSearch.par} holes={cSearch.holes} onCycle={cycleCPar} />
                     <div className="flex gap-2 mt-1">
                       <button
                         onClick={() => saveEditCourse(c.id)}
-                        disabled={cSaving || !cName.trim()}
+                        disabled={cSaving || !cSearch.name.trim()}
                         className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                       >
                         {cSaving ? 'Saving…' : 'Save'}
@@ -798,13 +784,13 @@ export function Admin() {
               {addingCourse ? (
                 <div className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                   <p className="text-sm font-semibold text-gray-200">New Course</p>
-                  <CourseSearchStep value={cSearch} onChange={handleCourseSearchChange} />
+                  <CourseSearchStep value={cSearch} onChange={setCSearch} />
                   <p className="text-gray-400 text-xs">Tap a hole to cycle par (3 / 4 / 5):</p>
-                  <ParEditor par={cPar} holes={cHoles} onCycle={cycleCPar} />
+                  <ParEditor par={cSearch.par} holes={cSearch.holes} onCycle={cycleCPar} />
                   <div className="flex gap-2 mt-1">
                     <button
                       onClick={saveCourse}
-                      disabled={cSaving || !cName.trim()}
+                      disabled={cSaving || !cSearch.name.trim()}
                       className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                     >
                       {cSaving ? 'Saving…' : 'Save Course'}

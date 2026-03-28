@@ -50,11 +50,8 @@ interface Props {
 
 const API_KEY = import.meta.env.VITE_GOLF_COURSE_API_KEY as string | undefined;
 const DEFAULT_HOLES = 18;
-const DEFAULT_PAR = Array(18).fill(4);
-
-function defaultResult(): CourseSearchResult {
-  return { name: '', holes: DEFAULT_HOLES, par: DEFAULT_PAR };
-}
+// Frozen so consumers can't accidentally mutate the module-level array
+const DEFAULT_PAR = Object.freeze(Array(DEFAULT_HOLES).fill(4)) as number[];
 
 function parseCourse(c: ApiCourse): CourseSearchResult {
   const holes = c.holes ?? c.tees?.[0]?.holes?.length ?? DEFAULT_HOLES;
@@ -76,14 +73,18 @@ function locationLabel(c: ApiCourse): string {
 }
 
 export function CourseSearchStep({ value, onChange }: Props) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(value.name);
   const [results, setResults] = useState<ApiCourse[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [, setSelected] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync query when parent resets the form (e.g. openAddCourse clears value.name)
+  useEffect(() => {
+    setQuery(value.name);
+  }, [value.name]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -96,9 +97,13 @@ export function CourseSearchStep({ value, onChange }: Props) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  // Clear pending debounce on unmount to avoid stale state updates
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
+
   function handleQueryChange(q: string) {
     setQuery(q);
-    setSelected(false);
     setSearchError('');
 
     // Always sync typed text to value.name so the Add Round button can enable.
@@ -139,12 +144,10 @@ export function CourseSearchStep({ value, onChange }: Props) {
     const parsed = parseCourse(course);
     onChange(parsed);
     setQuery(course.club_name);
-    setSelected(true);
     setShowDropdown(false);
     setResults([]);
   }
 
-  // Parse a comma-separated par string into number[]
   function handleParInput(raw: string) {
     const nums = raw.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n) && n >= 3 && n <= 6);
     if (nums.length > 0) {
@@ -191,8 +194,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
                 <button
                   type="button"
                   onClick={() => {
-                    onChange({ ...defaultResult(), name: query });
-                    setSelected(true);
+                    onChange({ name: query, holes: DEFAULT_HOLES, par: [...DEFAULT_PAR] });
                     setShowDropdown(false);
                   }}
                   className="w-full text-left px-4 py-3 text-gray-400 text-sm hover:bg-gray-700 transition-colors border-t border-gray-700"
