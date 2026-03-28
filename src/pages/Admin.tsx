@@ -16,6 +16,7 @@ import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 import { nanoid } from '../lib/nanoid';
 import { randomPin } from '../lib/pin';
+import { CourseSearchStep, type CourseSearchResult } from '../components/wizard/CourseSearchStep';
 
 interface GroupSummary {
   groupId: string;
@@ -140,6 +141,8 @@ export function Admin() {
   const [cHoles, setCHoles] = useState(18);
   const [cPar, setCPar] = useState<number[]>(defaultPar(18));
   const [cSaving, setCSaving] = useState(false);
+  // CourseSearchStep drives this; we sync it into cName/cHoles/cPar
+  const [cSearch, setCSearch] = useState<CourseSearchResult>({ name: '', holes: 18, par: defaultPar(18) });
 
   // Rounds
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -212,30 +215,30 @@ export function Admin() {
 
   const openAddCourse = () => {
     setEditingCourseId(null);
-    setCName('');
-    setCHoles(18);
-    setCPar(defaultPar(18));
+    const blank = { name: '', holes: 18, par: defaultPar(18) };
+    setCSearch(blank);
+    setCName(''); setCHoles(18); setCPar(defaultPar(18));
     setAddingCourse(true);
   };
 
   const openEditCourse = (c: Course) => {
     setAddingCourse(false);
     setEditingCourseId(c.id);
-    setCName(c.name);
-    setCHoles(c.holes);
-    setCPar([...c.par]);
+    const existing = { name: c.name, holes: c.holes, par: [...c.par] };
+    setCSearch(existing);
+    setCName(c.name); setCHoles(c.holes); setCPar([...c.par]);
+  };
+
+  const handleCourseSearchChange = (r: CourseSearchResult) => {
+    setCSearch(r);
+    setCName(r.name);
+    setCHoles(r.holes);
+    setCPar(r.par);
   };
 
   const cancelCourseForm = () => {
     setAddingCourse(false);
     setEditingCourseId(null);
-  };
-
-  const handleCHolesChange = (n: number) => {
-    setCHoles(n);
-    setCPar((prev) =>
-      n === 9 ? prev.slice(0, 9) : [...prev, ...defaultPar(18).slice(prev.length)],
-    );
   };
 
   const cycleCPar = (i: number) =>
@@ -740,25 +743,7 @@ export function Admin() {
                   /* ── Inline course edit ── */
                   <div key={c.id} className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                     <p className="text-sm font-semibold text-gray-200">Edit Course</p>
-                    <input
-                      className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                      placeholder="Course name"
-                      value={cName}
-                      onChange={(e) => setCName(e.target.value)}
-                    />
-                    <div className="flex items-center gap-3">
-                      <label className="text-gray-400 text-xs">Holes:</label>
-                      {[9, 18].map((n) => (
-                        <button
-                          key={n}
-                          onClick={() => handleCHolesChange(n)}
-                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold
-                            ${cHoles === n ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}
-                        >
-                          {n}
-                        </button>
-                      ))}
-                    </div>
+                    <CourseSearchStep value={cSearch} onChange={handleCourseSearchChange} />
                     <p className="text-gray-400 text-xs">Tap a hole to cycle par (3 / 4 / 5):</p>
                     <ParEditor par={cPar} holes={cHoles} onCycle={cycleCPar} />
                     <div className="flex gap-2 mt-1">
@@ -813,25 +798,7 @@ export function Admin() {
               {addingCourse ? (
                 <div className="bg-gray-700 rounded-xl p-3 flex flex-col gap-2">
                   <p className="text-sm font-semibold text-gray-200">New Course</p>
-                  <input
-                    className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                    placeholder="Course name"
-                    value={cName}
-                    onChange={(e) => setCName(e.target.value)}
-                  />
-                  <div className="flex items-center gap-3">
-                    <label className="text-gray-400 text-xs">Holes:</label>
-                    {[9, 18].map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => handleCHolesChange(n)}
-                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold
-                          ${cHoles === n ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
+                  <CourseSearchStep value={cSearch} onChange={handleCourseSearchChange} />
                   <p className="text-gray-400 text-xs">Tap a hole to cycle par (3 / 4 / 5):</p>
                   <ParEditor par={cPar} holes={cHoles} onCycle={cycleCPar} />
                   <div className="flex gap-2 mt-1">
