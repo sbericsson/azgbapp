@@ -1,35 +1,36 @@
 import { useState, useRef, useEffect } from 'react';
 
 // ── golfcourseapi.com response types ─────────────────────────────────────────
-// Adjust these if the actual API shape differs from what's documented at
-// https://api.golfcourseapi.com/docs/api/ (requires a free account to view).
-//
-// Phase 1: only name, holes, par[] are used.
-// Phase 2: courseRating, slopeRating, strokeIndex will be added from the tee data.
+// Endpoint: GET /v1/courses?club_name=QUERY
+// Auth:     Authorization: Key YOUR_KEY
 
 interface ApiHole {
-  hole_number: number;
   par: number;
-  stroke_index?: number; // Phase 2
+  yardage: number;
+  handicap: number;
 }
 
 interface ApiTee {
-  tee_name?: string;
-  course_rating?: number; // Phase 2
-  slope_rating?: number;  // Phase 2
-  holes?: ApiHole[];
+  tee_name: string;
+  course_rating: number;
+  slope_rating: number;
+  number_of_holes: number;
+  par_total: number;
+  holes: ApiHole[];
 }
 
 interface ApiCourse {
-  id: string;
+  id: number;
   club_name: string;
   location?: {
     city?: string;
     state?: string;
     country?: string;
   };
-  holes?: number;
-  tees?: ApiTee[];
+  tees?: {
+    male?: ApiTee[];
+    female?: ApiTee[];
+  };
 }
 
 interface ApiSearchResponse {
@@ -54,16 +55,10 @@ const DEFAULT_HOLES = 18;
 const DEFAULT_PAR = Object.freeze(Array(DEFAULT_HOLES).fill(4)) as number[];
 
 function parseCourse(c: ApiCourse): CourseSearchResult {
-  const holes = c.holes ?? c.tees?.[0]?.holes?.length ?? DEFAULT_HOLES;
-  // Use the first tee's hole data for par values; fall back to par 4 per hole
-  const teeHoles = c.tees?.[0]?.holes ?? [];
-  const par =
-    teeHoles.length > 0
-      ? teeHoles
-          .slice()
-          .sort((a, b) => a.hole_number - b.hole_number)
-          .map((h) => h.par)
-      : Array(holes).fill(4);
+  // Prefer male tees, fall back to female; use first (usually championship) tee
+  const tee = (c.tees?.male ?? c.tees?.female ?? [])[0];
+  const holes = tee?.number_of_holes ?? DEFAULT_HOLES;
+  const par = tee?.holes?.map((h) => h.par) ?? Array(holes).fill(4);
   return { name: c.club_name, holes, par };
 }
 
@@ -120,10 +115,9 @@ export function CourseSearchStep({ value, onChange }: Props) {
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        // Endpoint per design doc — verify against golfcourseapi.com docs once you have a key
         const res = await fetch(
-          `https://api.golfcourseapi.com/v1/search?search=${encodeURIComponent(q.trim())}`,
-          { headers: { Authorization: `Bearer ${API_KEY}` } },
+          `https://api.golfcourseapi.com/v1/courses?club_name=${encodeURIComponent(q.trim())}`,
+          { headers: { Authorization: `Key ${API_KEY}` } },
         );
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data: ApiSearchResponse = await res.json();
