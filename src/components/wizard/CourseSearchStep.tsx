@@ -123,7 +123,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
         // Endpoint per design doc — verify against golfcourseapi.com docs once you have a key
         const res = await fetch(
           `https://api.golfcourseapi.com/v1/search?search=${encodeURIComponent(q.trim())}`,
-          { headers: { Authorization: `Key ${API_KEY}` } },
+          { headers: { Authorization: `Bearer ${API_KEY}` } },
         );
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data: ApiSearchResponse = await res.json();
