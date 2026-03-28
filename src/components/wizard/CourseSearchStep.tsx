@@ -22,6 +22,7 @@ interface ApiTee {
 interface ApiCourse {
   id: number;
   club_name: string;
+  course_name: string;
   location?: {
     city?: string;
     state?: string;
@@ -55,11 +56,14 @@ const DEFAULT_HOLES = 18;
 const DEFAULT_PAR = Object.freeze(Array(DEFAULT_HOLES).fill(4)) as number[];
 
 function parseCourse(c: ApiCourse): CourseSearchResult {
-  // Prefer male tees, fall back to female; use first (usually championship) tee
   const tee = (c.tees?.male ?? c.tees?.female ?? [])[0];
   const holes = tee?.number_of_holes ?? DEFAULT_HOLES;
   const par = tee?.holes?.map((h) => h.par) ?? Array(holes).fill(4);
-  return { name: c.club_name, holes, par };
+  // Use course_name when it adds info (e.g. "Oaks/Lakes"), otherwise club_name
+  const name = c.course_name && c.course_name !== c.club_name
+    ? `${c.club_name} — ${c.course_name}`
+    : c.club_name;
+  return { name, holes, par };
 }
 
 function locationLabel(c: ApiCourse): string {
@@ -178,9 +182,15 @@ export function CourseSearchStep({ value, onChange }: Props) {
                     className="w-full text-left px-4 py-3 hover:bg-gray-700 transition-colors"
                   >
                     <p className="text-white text-sm font-medium">{c.club_name}</p>
-                    {locationLabel(c) && (
-                      <p className="text-gray-500 text-xs">{locationLabel(c)}</p>
+                    {c.course_name && c.course_name !== c.club_name && (
+                      <p className="text-green-400 text-xs">{c.course_name}</p>
                     )}
+                    {(() => {
+                      const tee = (c.tees?.male ?? c.tees?.female ?? [])[0];
+                      const loc = locationLabel(c);
+                      const detail = [loc, tee ? `${tee.number_of_holes} holes · par ${tee.par_total}` : null].filter(Boolean).join(' · ');
+                      return detail ? <p className="text-gray-500 text-xs">{detail}</p> : null;
+                    })()}
                   </button>
                 </li>
               ))}
