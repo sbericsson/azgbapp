@@ -22,7 +22,7 @@ export type RoundStatus = 'pending' | 'active' | 'complete';
 export interface Round {
   id: string;
   name: string;
-  day: 'friday' | 'saturday_am' | 'saturday_pm' | 'sunday';
+  day: 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
   format: RoundFormat;
   status: RoundStatus;
   holes: number;

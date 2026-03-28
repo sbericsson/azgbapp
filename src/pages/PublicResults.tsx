@@ -17,10 +17,13 @@ import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
 import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
 
 const DAY_ORDER: Record<string, number> = {
-  friday: 0,
-  saturday_am: 1,
-  saturday_pm: 2,
-  sunday: 3,
+  monday: 0,
+  tuesday: 1,
+  wednesday: 2,
+  thursday: 3,
+  friday: 4,
+  saturday: 5,
+  sunday: 6,
 };
 
 function fmtScore(n: number, format: RoundFormat): string {
@@ -96,8 +99,6 @@ function computeRoundEntries(
 }
 
 function dayLabel(day: string) {
-  if (day === 'saturday_am') return 'Saturday AM';
-  if (day === 'saturday_pm') return 'Saturday PM';
   return day.charAt(0).toUpperCase() + day.slice(1);
 }
 

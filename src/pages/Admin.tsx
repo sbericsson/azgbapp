@@ -830,9 +830,12 @@ export function Admin() {
               value={rDay}
               onChange={(e) => setRDay(e.target.value as Round['day'])}
             >
+              <option value="monday">Monday</option>
+              <option value="tuesday">Tuesday</option>
+              <option value="wednesday">Wednesday</option>
+              <option value="thursday">Thursday</option>
               <option value="friday">Friday</option>
-              <option value="saturday_am">Saturday AM</option>
-              <option value="saturday_pm">Saturday PM</option>
+              <option value="saturday">Saturday</option>
               <option value="sunday">Sunday</option>
             </select>
             <select
@@ -925,7 +928,7 @@ export function Admin() {
                   >
                     <p className="font-semibold">{r.name}</p>
                     <p className="text-gray-400 text-xs capitalize">
-                      {r.day.replace('_', ' ')} · {r.format} · {r.holes} holes
+                      {r.day.charAt(0).toUpperCase() + r.day.slice(1)} · {r.format} · {r.holes} holes
                       {courseName ? ` · ${courseName}` : ''} · par {totalPar}
                     </p>
                   </button>

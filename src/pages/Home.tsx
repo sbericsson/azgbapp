@@ -4,11 +4,14 @@ import { AuthContext } from '../hooks/useAuth';
 import { listRounds, listCourses } from '../lib/firestore';
 import type { Round, Course } from '../types/tournament';
 
-const dayOrder: Round['day'][] = ['friday', 'saturday_am', 'saturday_pm', 'sunday'];
+const dayOrder: Round['day'][] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const dayLabel: Record<Round['day'], string> = {
+  monday: 'Monday',
+  tuesday: 'Tuesday',
+  wednesday: 'Wednesday',
+  thursday: 'Thursday',
   friday: 'Friday',
-  saturday_am: 'Saturday AM',
-  saturday_pm: 'Saturday PM',
+  saturday: 'Saturday',
   sunday: 'Sunday',
 };
 
