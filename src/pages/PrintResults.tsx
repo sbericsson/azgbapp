@@ -204,7 +204,7 @@ export function PrintResults() {
             >
               <div className="border-b-2 border-gray-600 print:border-gray-400 pb-2 mb-4">
                 <h2 className="text-lg font-bold">
-                  Round {idx + 1} · {dayLabel(round.day)} · {formatLabel(round.format)}
+                  {round.name} · {dayLabel(round.day)} · {formatLabel(round.format)}
                   {courseName ? ` · ${courseName}` : ''}
                 </h2>
               </div>

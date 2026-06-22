@@ -269,7 +269,7 @@ export function PublicResults() {
         )}
 
         <div className="flex flex-col gap-8">
-          {results.map((result, idx) => {
+          {results.map((result) => {
             const { round, courseName, entries } = result;
             const isWolf = round.format === 'wolf';
             const isBestBallFmt = round.format === 'bestBall';
@@ -278,7 +278,7 @@ export function PublicResults() {
               <div key={round.id} className="bg-gray-800 rounded-2xl overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-700 flex items-center justify-between gap-2">
                   <p className="font-bold">
-                    Round {idx + 1} · {dayLabel(round.day)} · {formatLabel(round.format)}
+                    {round.name} · {dayLabel(round.day)} · {formatLabel(round.format)}
                     {courseName ? ` · ${courseName}` : ''}
                   </p>
                   {round.status === 'active' && (
