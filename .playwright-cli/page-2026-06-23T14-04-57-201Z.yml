@@ -1,0 +1,12 @@
+- generic [ref=e2]:
+  - generic: DEV — azgb-dev
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - link "← Admin" [ref=e5] [cursor=pointer]:
+        - /url: /admin
+      - generic [ref=e6]:
+        - button "↻ Refresh" [ref=e7]
+        - button "Print" [ref=e8]
+    - generic [ref=e9]:
+      - heading "AZGB Tournament Results — QA AI Scramble 2026-06-22" [level=1] [ref=e10]
+      - paragraph [ref=e11]: Loading…

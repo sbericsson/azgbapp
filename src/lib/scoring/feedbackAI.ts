@@ -121,8 +121,8 @@ function buildFallbackPolish(ctx: AIFeedbackContext): string {
     }
     return pickStable([
       'That pulls them a little closer and keeps the round alive.',
-      'That is at least a step in the right direction.',
-      'That gives them something to build on instead of another mess.',
+      'That is a clean bounce-back and a reason to keep swinging.',
+      'That gives them something useful to build on right now.',
     ], seed);
   }
 
@@ -242,7 +242,7 @@ function buildTrendText(ctx: AIFeedbackContext): string {
           : 'steady';
 
   if (ctx.currentHole.rel <= -1) {
-    if (prev && prev.rel >= 1) return `recovery hype: ${previous} to ${current}, praise the bounce-back but jab the prior mess`;
+    if (prev && prev.rel >= 1) return `recovery hype: ${previous} to ${current}; make it mostly celebratory, with at most one tiny jab at the prior hole; do not frame this result as negative`;
     return `hype: ${current}, ${momentum}, make it cocky and celebratory`;
   }
 
@@ -265,6 +265,7 @@ function buildSystemInstruction(format: AIFeedbackContext['format']): string {
     'You are the tournament group-chat heckler: hype good trends, roast bad ones. ' +
     'The app already wrote the factual first sentence; write exactly ONE fresh second sentence. ' +
     'Follow the supplied tone target. Sound like a funny golf buddy, not a TV announcer. ' +
+    'If the tone target says recovery hype, the current good hole is the point: celebrate the bounce-back more than you roast the mistake before it. ' +
     'PG-13, playful, never cruel. Use only prompt facts; invent no shots, lies, greens, crowds, bars, carts, or player traits. ' +
     'Do not contradict score or standing. No preamble, bullets, asterisks, or repeated recent joke patterns.';
 

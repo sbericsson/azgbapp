@@ -1,0 +1,27 @@
+- generic [ref=e2]:
+  - generic: DEV — azgb-dev
+  - generic [ref=e106]:
+    - banner [ref=e107]:
+      - button "‹" [ref=e108]
+      - generic [ref=e109]:
+        - heading "Leaderboard" [level=1] [ref=e110]
+        - paragraph [ref=e111]: QA Scramble Round A · San Marcos Golf & Country Club
+      - generic [ref=e114]: Live
+    - generic [ref=e115]:
+      - paragraph [ref=e116]: Tap a group to view their scorecard
+      - generic [ref=e117]:
+        - generic [ref=e118] [cursor=pointer]:
+          - generic [ref=e119]: 🥇
+          - generic [ref=e120]:
+            - paragraph [ref=e121]: Group Alpha
+            - paragraph [ref=e122]: 6 holes in
+            - paragraph [ref=e123]: Avery · Blake · Casey · Drew
+          - generic [ref=e124]: "-2"
+        - generic [ref=e125] [cursor=pointer]:
+          - generic [ref=e126]: 🥈
+          - generic [ref=e127]:
+            - paragraph [ref=e128]: Group Bravo
+            - paragraph [ref=e129]: 6 holes in
+            - paragraph [ref=e130]: Elliot · Finley · Gray · Harper
+          - generic [ref=e131]: E
+    - button "Back to Scorecard" [ref=e133]
