@@ -122,17 +122,20 @@ Session state is stored in `localStorage` with a 6-hour TTL. Closing the tab doe
 
 ## AI Commentary
 
-When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls the Google Generative Language API (`gemini-3.1-flash-lite-preview`) to generate a short, punchy commentary line personalised to the moment — referencing player names (Best Ball only), recent hole history, scoring streaks, and live leaderboard position. The toast shows pulsing dots while the response loads, then updates with the commentary. If the API call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
+When a hole is locked in Best Ball, Scramble, or Gauntlet format, the app calls OpenRouter to generate a short, punchy commentary line personalised to the moment — referencing player names (Best Ball only), recent hole history, scoring streaks, and live leaderboard position. The toast shows pulsing dots while the response loads, then updates with the commentary. If the OpenRouter call fails or times out (5 s), the app falls back silently to static commentary. Wolf format uses static commentary only.
 
-The model is prompted with a `systemInstruction` to act as a dry, brutally honest golf commentator and respond in one sentence (max two). Commentary for scramble and gauntlet formats avoids naming individual players since those formats score as a team.
+The app uses OpenRouter only. Gemini/Gemma is no longer used for AI commentary.
 
-The Google Generative Language API supports CORS from the browser directly, so no nginx proxy is required. To enable AI commentary:
+The model is prompted to act like a group-chat golf heckler: hype good trends, roast bad ones, and respond with one additional sentence after the app's factual scoring sentence. Commentary for scramble and gauntlet formats avoids naming individual players since those formats score as a team.
 
-1. Get a free API key from [Google AI Studio](https://aistudio.google.com/) (no billing required).
+To enable AI commentary:
+
+1. Get an API key from [OpenRouter](https://openrouter.ai/).
 2. Add it to `/var/www/azgb/.env.local` on the server:
 
 ```
-VITE_GEMMA_API_KEY=your_key_here
+VITE_OPENROUTER_API_KEY=your_key_here
+VITE_OPENROUTER_MODEL=deepseek/deepseek-v4-flash
 ```
 
 3. Redeploy (`bash /var/www/azgb/deploy.sh`). No nginx changes needed.
@@ -168,8 +171,10 @@ VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
 
-# Optional — enables AI commentary (Google AI Studio key)
-VITE_GEMMA_API_KEY=...
+# Optional — enables AI commentary via OpenRouter
+VITE_OPENROUTER_API_KEY=...
+VITE_OPENROUTER_MODEL=deepseek/deepseek-v4-flash
+
 ```
 
 The app admin master PIN lives in Firestore (`config/app.appAdminPin`), not in env vars. No env var is needed for it.

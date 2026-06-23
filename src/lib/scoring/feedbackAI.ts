@@ -1,6 +1,7 @@
-const GEMMA_API_KEY = import.meta.env.VITE_GEMMA_API_KEY as string | undefined;
-const MODEL = 'gemini-3.1-flash-lite-preview';
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined;
+const OPENROUTER_MODEL = (import.meta.env.VITE_OPENROUTER_MODEL as string | undefined) ?? 'deepseek/deepseek-v4-flash';
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
 const TIMEOUT_MS = 5000;
 
 export interface AIFeedbackContext {
@@ -227,18 +228,45 @@ export function buildFallbackFeedback(ctx: AIFeedbackContext): string {
   return `${buildFactSentence(ctx)} ${buildFallbackPolish(ctx)}`;
 }
 
+function buildTrendText(ctx: AIFeedbackContext): string {
+  const prev = ctx.holeHistory.at(-1);
+  const current = resultLabel(ctx.currentHole.rel);
+  const previous = prev ? resultLabel(prev.rel) : 'none';
+  const momentum =
+    prev === undefined
+      ? 'opening'
+      : ctx.currentHole.rel < prev.rel
+        ? 'improving'
+        : ctx.currentHole.rel > prev.rel
+          ? 'slipping'
+          : 'steady';
+
+  if (ctx.currentHole.rel <= -1) {
+    if (prev && prev.rel >= 1) return `recovery hype: ${previous} to ${current}, praise the bounce-back but jab the prior mess`;
+    return `hype: ${current}, ${momentum}, make it cocky and celebratory`;
+  }
+
+  if (ctx.currentHole.rel === 0) {
+    if (ctx.standing === 'leading' || ctx.standing === 'tiedLead') {
+      return 'steady praise: par while in front, calm but a little smug';
+    }
+    return 'light jab: par while chasing, useful but not enough';
+  }
+
+  if (prev && prev.rel <= -1) {
+    return `warning roast: ${previous} to ${current}, call out the stumble after momentum`;
+  }
+
+  return `roast: ${current}, ${momentum}, funny and sharp without being cruel`;
+}
+
 function buildSystemInstruction(format: AIFeedbackContext['format']): string {
   const base =
-    'You are a dry, brutally honest golf commentator for a private tournament. ' +
-    'The app already wrote the factual first sentence. ' +
-    'Respond with exactly ONE additional sentence only. ' +
-    'No preamble, no meta-commentary, no asterisks, no bullet points. ' +
-    "Do not start with 'Ah', 'Well', 'Okay', 'Sure', or any other filler word. " +
-    'Use only facts present in the prompt. ' +
-    'Do not invent swings, ball flight, fairways, greens, tee boxes, crowds, bars, parking lots, cart fees, or any other unsupported detail. ' +
-    'Do not mention front nine, back nine, the turn, or tournament position unless it matches the supplied facts. ' +
-    'Do not contradict the supplied standing or score. ' +
-    'Vary the phrasing and avoid repeating openings, insults, or joke patterns from recent feedback.';
+    'You are the tournament group-chat heckler: hype good trends, roast bad ones. ' +
+    'The app already wrote the factual first sentence; write exactly ONE fresh second sentence. ' +
+    'Follow the supplied tone target. Sound like a funny golf buddy, not a TV announcer. ' +
+    'PG-13, playful, never cruel. Use only prompt facts; invent no shots, lies, greens, crowds, bars, carts, or player traits. ' +
+    'Do not contradict score or standing. No preamble, bullets, asterisks, or repeated recent joke patterns.';
 
   if (format === 'bestBall') {
     return (
@@ -285,6 +313,7 @@ function buildUserPrompt(ctx: AIFeedbackContext): string {
   parts.push(
     `Current: hole ${cur.holeNum} of ${ctx.totalHoles}, par ${cur.par}, result ${resultLabel(cur.rel)}.${leadStr} Team running total: ${fmtScore(ctx.runningTotal)}.${streakStr}`,
   );
+  parts.push(`Tone target: ${buildTrendText(ctx)}.`);
 
   const standingText = buildStandingText(ctx);
   if (standingText) {
@@ -328,35 +357,52 @@ function stripPreamble(text: string): string {
 }
 
 export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
-  if (!GEMMA_API_KEY) throw new Error('No Gemma API key configured');
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('No OpenRouter API key configured');
+  }
+
+  return getOpenRouterFeedback(ctx);
+}
+
+async function getOpenRouterFeedback(ctx: AIFeedbackContext): Promise<string> {
+  if (!OPENROUTER_API_KEY) throw new Error('No OpenRouter API key configured');
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${API_URL}?key=${GEMMA_API_KEY}`, {
+    const res = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Golf Bender',
+      },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: buildSystemInstruction(ctx.format) }] },
-        contents: [{ parts: [{ text: buildUserPrompt(ctx) }] }],
-        generationConfig: { maxOutputTokens: 80, temperature: 0.45 },
+        model: OPENROUTER_MODEL,
+        messages: [
+          { role: 'system', content: buildSystemInstruction(ctx.format) },
+          { role: 'user', content: buildUserPrompt(ctx) },
+        ],
+        max_tokens: 80,
+        temperature: 0.45,
       }),
       signal: controller.signal,
     });
 
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      console.error('AI error body:', body);
-      throw new Error(`AI error: ${res.status}`);
+      console.error('OpenRouter error body:', body);
+      throw new Error(`OpenRouter error: ${res.status}`);
     }
 
     const data = (await res.json()) as {
-      candidates?: { content: { parts: { text: string }[] } }[];
+      choices?: { message?: { content?: string } }[];
     };
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (!text) throw new Error('Empty response from AI');
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text) throw new Error('Empty response from OpenRouter');
     const polish = sanitizePolish(text, ctx);
     if (!polish) return buildFallbackFeedback(ctx);
     return `${buildFactSentence(ctx)} ${polish}`;
