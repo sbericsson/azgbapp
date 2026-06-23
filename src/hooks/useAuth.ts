@@ -6,6 +6,7 @@ import {
   useCallback,
 } from 'react';
 import {
+  findTournamentByCode,
   getGroupByPin,
   getTournament,
   getGroupById,
@@ -173,19 +174,19 @@ export function useAuthProvider(): AuthContextValue {
 
   const loginAsGroup = useCallback(
     async (tournamentId: string, pin: string): Promise<boolean> => {
-      const tournament = await getTournament(tournamentId);
+      const tournament = await findTournamentByCode(tournamentId);
       if (!tournament) return false;
-      const group = await getGroupByPin(tournamentId, pin);
+      const group = await getGroupByPin(tournament.id, pin);
       if (!group) return false;
       const session: StoredSession = {
-        tournamentId,
+        tournamentId: tournament.id,
         groupId: group.id,
         isAdmin: false,
         isAppAdmin: false,
         loginAt: Date.now(),
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      setState({ tournamentId, tournament, group, isAdmin: false, isAppAdmin: false, loading: false });
+      setState({ tournamentId: tournament.id, tournament, group, isAdmin: false, isAppAdmin: false, loading: false });
       return true;
     },
     [],
@@ -193,18 +194,18 @@ export function useAuthProvider(): AuthContextValue {
 
   const loginAsAdmin = useCallback(
     async (tournamentId: string, pin: string): Promise<boolean> => {
-      const tournament = await getTournament(tournamentId);
+      const tournament = await findTournamentByCode(tournamentId);
       if (!tournament) return false;
       if (tournament.adminPin !== pin) return false;
       const session: StoredSession = {
-        tournamentId,
+        tournamentId: tournament.id,
         groupId: null,
         isAdmin: true,
         isAppAdmin: false,
         loginAt: Date.now(),
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      setState({ tournamentId, tournament, group: null, isAdmin: true, isAppAdmin: false, loading: false });
+      setState({ tournamentId: tournament.id, tournament, group: null, isAdmin: true, isAppAdmin: false, loading: false });
       return true;
     },
     [],
@@ -233,14 +234,14 @@ export function useAuthProvider(): AuthContextValue {
   }, []);
 
   const enterTournamentAsAdmin = useCallback(async (tournamentId: string): Promise<void> => {
-    const tournament = await getTournament(tournamentId);
+    const tournament = await findTournamentByCode(tournamentId);
     if (!tournament) return;
     const raw = localStorage.getItem(SESSION_KEY);
     if (raw) {
       const s: StoredSession = JSON.parse(raw);
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, tournamentId }));
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, tournamentId: tournament.id }));
     }
-    setState((prev) => ({ ...prev, tournamentId, tournament, isAdmin: true }));
+    setState((prev) => ({ ...prev, tournamentId: tournament.id, tournament, isAdmin: true }));
   }, []);
 
   const logout = useCallback(() => {

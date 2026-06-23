@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { getTournament } from '../lib/firestore';
+import { findTournamentByCode } from '../lib/firestore';
 
 export function Login() {
   const { loginAsGroup, loginAsAdmin, loginAsAppAdmin } = useContext(AuthContext);
@@ -17,7 +17,7 @@ export function Login() {
     const params = new URLSearchParams(window.location.search);
     const urlCode = params.get('code');
     if (urlCode) {
-      setTournamentCode(urlCode.toUpperCase());
+      setTournamentCode(urlCode.trim());
       return;
     }
     // Fall back to last session
@@ -34,9 +34,9 @@ export function Login() {
   }, []);
 
   useEffect(() => {
-    const code = tournamentCode.trim().toUpperCase();
+    const code = tournamentCode.trim();
     if (!code) { setLogoUrl(null); return; }
-    getTournament(code).then((t) => {
+    findTournamentByCode(code).then((t) => {
       setLogoUrl(t?.logoUrl ?? null);
     }).catch(() => { setLogoUrl(null); });
   }, [tournamentCode]);
@@ -52,7 +52,7 @@ export function Login() {
     setLoading(true);
     setError('');
     try {
-      const code = tournamentCode.trim().toUpperCase();
+      const code = tournamentCode.trim();
 
       if (!code) {
         // App admin: blank tournament code

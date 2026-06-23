@@ -12,6 +12,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { tournamentCodeCandidates } from './tournamentCode';
 import type { Tournament, Group, Golfer, Course, Round, AppConfig } from '../types/tournament';
 import type { GroupScoreDoc, HoleScore } from '../types/scoring';
 
@@ -28,6 +29,14 @@ export async function getTournament(id: string): Promise<Tournament | null> {
   const snap = await getDoc(doc(db, 'tournaments', id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as Tournament;
+}
+
+export async function findTournamentByCode(code: string): Promise<Tournament | null> {
+  for (const candidate of tournamentCodeCandidates(code)) {
+    const tournament = await getTournament(candidate);
+    if (tournament) return tournament;
+  }
+  return null;
 }
 
 export async function listTournaments(): Promise<Tournament[]> {
