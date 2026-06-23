@@ -34,3 +34,6 @@ dist-ssr
 # Claude Code local settings
 .claude/
 .gstack/
+.agents/
+.playwright-cli/
+AGENTS.md
