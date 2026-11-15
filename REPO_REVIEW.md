@@ -16,6 +16,39 @@ Evidence labels: **Executed** (I ran it), **Read** (confirmed by reading the cod
 
 ---
 
+## Implementation status (updated 2026-11-15)
+
+The findings below describe the baseline and are left as written. This section records what has since landed on `main`.
+
+**Branch state.** `phase1-self-service` was merged into `main` with `main`'s deploy fixes (`4a1b872`), so `deploy.sh` now deploys the reviewed code. Commits: `c5972d9` (R15 interim), `96f7d35` (everything else below).
+
+**Verification of `96f7d35`.** Executed: `npm run lint` clean; `npm test` 40 passed in 5 files (adds `standings.test.ts` and `backupFormat.test.ts`); `npm run build` passes (717 kB JS, 217 kB gzip). Smoke test on the dev server against `azgb-dev`: login page and a not-found results page load with no console errors. Not run: anything that logs in or writes, offline locking on a phone, the new deploy script on the server, deployed Storage rules.
+
+| Item | Status | What was done |
+|---|---|---|
+| R15 (S2) | Partial | `deploy.sh` blanks `VITE_OPENROUTER_API_KEY` in production builds. Not done: server-side proxy; the golf-course key is still in the bundle |
+| R4 (B4, B7, B18) | Done | `src/lib/scoring/standings.ts` is the only aggregation; used by the in-app leaderboard, scorecard, public scorecard, public results, print results, and admin summary. Locked holes only, par by hole index, shared ranks (`T2`), groups with no holes unranked and last |
+| R3 (B3) | Done | `deriveWolfHoles()` recomputes carry and points from inputs in hole order at read time; stored `carry`/`points` are informational |
+| R1 (B1, B8) | Done, not device-tested | `saveHole` writes to the local cache without awaiting the server; sync state from `metadata.hasPendingWrites`; lock guard; auto-advance targets the hole after the locked one and is cancelled by manual navigation |
+| R5 (B5, B6, B10, B14, B15, B19) | Done | `undefined` → `deleteField()` in all update helpers plus `try/finally`; round and tournament deletes cascade in batches; pairing, course, and golfer deletes confirm; archive is a restorable `archivedAt` flag that blocks code login; player IDs kept per slot; PINs exactly 4 digits and not the admin PIN; Wolf needs 4 players, Gauntlet 2; changing a round's course refreshes pars and holes |
+| R6 (B9) | Partial | A completed round can be reopened with scores kept; reset to pending is a separate confirmed action. Not done: admin screen to edit a group's scores |
+| R7 | Done | Admin settings: download JSON backup. App Admin: restore from backup into a code that does not exist yet. Firestore scheduled backups not configured |
+| R8 (B12, B13) | Done | 16-hour sliding session refreshed while the app is in use; network errors on restore keep the session; Home and Scorecard subscribe to rounds, Home has an error state with retry |
+| R9 | Partial | GitHub Actions runs lint, test, build. Unit tests added for standings (Wolf derivation, par lookup, ranking) and backup format. Not done: merge-reducer tests (R2 not built), Playwright offline suite |
+| R10 (B11) | Done | Commentary card sits above the action bar and can be dismissed while loading |
+| R11 (B16, B23) | Partial | Swipe ignores vertical gestures and the hole strip; pinch zoom allowed; unset scores labelled "not set". Not done: whole-round review before the last lock. The "Live" badge only shows for active rounds, so it was left alone |
+| R12 (B20) | Done, not run on server | `scripts/build-release.sh` builds into `releases/` and atomically swaps the `dist` symlink (first run converts `dist/` to a symlink); used by `deploy.sh` and `deploy-dev.sh`; nginx security headers repeated per location with `always`; `deploy-ai.sh` removed |
+| R14 (B17, B21, B22) | Done | Legacy `saturday_am`/`saturday_pm` mapped to `saturday` when rounds are read; `/bypass` removed; Storage writes denied (reads kept on the old logo path; needs `firebase deploy --only storage`); `CLAUDE.md` and `TODOS.md` refreshed; in-range dependency updates (audit 37 → 16; the 4 remaining production advisories come through Firestore's Node-only gRPC dependency) |
+| R13 (S1) | Not started | Waiting on open question 1 (billing-enabled plan) and 2 (scorer emails). Until it ships, PINs remain publicly readable, including on the public results page |
+| R2 (B2) | Not started | P2; becomes P1 with organiser score editing |
+| B24 | Not changed | `forceOwnership: true` kept |
+
+Deviation from section 6: `firebase` is pinned to `~12.9.0` rather than updated to 12.19, because 12.19 adds about 215 kB (61 kB gzip) to the single bundle.
+
+Open questions 3 to 9 in section 8 are still open.
+
+---
+
 ## 1. Current health and verification
 
 **Assessment.** The branch is in better shape than `main`: lint is clean, tests and build pass, and the dead Gemini model is gone. The scoring maths is sound for one phone per group, online, holes locked in order. The main on-course weakness is unchanged: scoring stalls offline. The larger issue is now security. The branch adds a public tournament-creation page while every document, including every organiser's admin PIN, stays readable and writable by anyone, and a billable API key ships in the bundle.
