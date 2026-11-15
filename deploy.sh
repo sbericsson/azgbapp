@@ -27,6 +27,11 @@ npm ci --include=dev
 echo "==> Building…"
 # Clear any VITE_* vars exported into the shell environment — they override .env files
 while IFS='=' read -r key _; do unset "$key"; done < <(printenv | grep '^VITE_')
+# Never bake the OpenRouter key into the public bundle (REPO_REVIEW S2/R15).
+# A shell value overrides .env files in Vite, so an empty value here wins over
+# any key in /var/www/azgb/.env and AI commentary falls back to static text.
+# Remove only once the calls go through a server-side proxy.
+export VITE_OPENROUTER_API_KEY=""
 npm run build
 
 echo ""
