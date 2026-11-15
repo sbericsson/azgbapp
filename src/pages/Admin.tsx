@@ -3,18 +3,16 @@ import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
   createCourse, listCourses, updateCourse, deleteCourse,
-  createGroup, updateGroup, deleteGroup, listGroupsByRound, getGroupByPin,
+  createGroup, updateGroup, deleteGroupWithScores, listGroupsByRound, getGroupByPin,
   createRound, listRounds, deleteRound, updateRound,
   listAllScores, clearRoundScores,
 } from '../lib/firestore';
 import type { Golfer, Course, Group, Round, RoundFormat, Player } from '../types/tournament';
-import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
+import type { GroupScoreDoc } from '../types/scoring';
 import { DEFAULT_PAR } from '../constants/wolf';
-import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
-import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
-import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
-import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
+import { computeGroupStanding } from '../lib/scoring/standings';
 import { nanoid } from '../lib/nanoid';
+import { exportTournament, downloadJson } from '../lib/backup';
 import { randomPin } from '../lib/pin';
 import { CourseSearchStep, type CourseSearchResult } from '../components/wizard/CourseSearchStep';
 
@@ -30,35 +28,9 @@ function computeGroupSummary(
   round: Round,
   scoreDocs: GroupScoreDoc[],
 ): GroupSummary {
-  const doc = scoreDocs.find((d) => d.groupId === group.id);
-  if (!doc) return { groupId: group.id, score: 0, holesCompleted: 0 };
-  const lockedHoles = doc.holes.filter((h) => h.locked);
-  const holesCompleted = lockedHoles.length;
-  if (round.format === 'wolf') {
-    const wolfHoles = lockedHoles.filter(isWolfHole) as WolfHoleScore[];
-    const playerPoints = group.players.map((p) => ({
-      playerId: p.id,
-      pts: totalWolfPoints(wolfHoles, p.id),
-    }));
-    return {
-      groupId: group.id,
-      score: playerPoints.reduce((s, p) => s + p.pts, 0),
-      holesCompleted,
-      playerPoints,
-    };
-  }
-  if (round.format === 'bestBall') {
-    const bbHoles = lockedHoles.filter(isBestBallHole) as BestBallHoleScore[];
-    return { groupId: group.id, score: bestBallTotalToPar(bbHoles, round.par), holesCompleted };
-  }
-  if (round.format === 'gauntlet') {
-    const gHoles = lockedHoles.filter(isGauntletHole) as GauntletHoleScore[];
-    return { groupId: group.id, score: gauntletTotalToPar(gHoles, round.par), holesCompleted };
-  }
-  const sHoles = lockedHoles.filter(isScrambleHole) as ScrambleHoleScore[];
-  return { groupId: group.id, score: scrambleTotalToPar(sHoles, round.par), holesCompleted };
+  const s = computeGroupStanding(round, group, scoreDocs.find((d) => d.groupId === group.id));
+  return { groupId: group.id, score: s.score, holesCompleted: s.holesCompleted, playerPoints: s.playerPoints };
 }
-
 
 function cyclePar(val: number) {
   return val === 3 ? 4 : val === 4 ? 5 : 3;
@@ -110,6 +82,24 @@ function ParEditor({
   );
 }
 
+/** Players required per format; null means any count from 1 to 4. */
+const REQUIRED_PLAYERS: Partial<Record<RoundFormat, number>> = { wolf: 4, gauntlet: 2 };
+
+/**
+ * Validate a pairing before saving: 4-digit numeric PIN that is not the admin
+ * PIN (B14) and a player count the format supports (B19).
+ */
+function validatePairing(pin: string, adminPin: string | undefined, format: RoundFormat | undefined, playerCount: number): string | null {
+  if (!/^\d{4}$/.test(pin)) return 'PIN must be exactly 4 digits.';
+  if (adminPin && pin === adminPin) return 'That PIN is the tournament admin PIN. Choose another.';
+  if (playerCount === 0) return 'Add at least one player.';
+  const required = format ? REQUIRED_PLAYERS[format] : undefined;
+  if (required && playerCount !== required) {
+    return `${format === 'wolf' ? 'Wolf' : 'Gauntlet'} needs exactly ${required} players.`;
+  }
+  return null;
+}
+
 // ── Admin page ────────────────────────────────────────────────────────────────
 
 export function Admin() {
@@ -124,6 +114,7 @@ export function Admin() {
   const [tSettingsSaving, setTSettingsSaving] = useState(false);
   const [tLogoUploading, setTLogoUploading] = useState(false);
   const [settingsCopied, setSettingsCopied] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
 
   // Roster
@@ -203,6 +194,8 @@ export function Admin() {
   };
 
   const removeGolfer = async (id: string) => {
+    const name = golfers.find((g) => g.id === id)?.name ?? 'this golfer';
+    if (!window.confirm(`Remove ${name} from the roster?`)) return;
     await deleteGolfer(tId, id);
     setGolfers((gs) => gs.filter((g) => g.id !== id));
   };
@@ -259,6 +252,8 @@ export function Admin() {
   };
 
   const removeCourse = async (id: string) => {
+    const name = courses.find((c) => c.id === id)?.name ?? 'this course';
+    if (!window.confirm(`Delete ${name}? Rounds already created keep their pars.`)) return;
     await deleteCourse(tId, id);
     setCourses((cs) => cs.filter((c) => c.id !== id));
     if (rCourseId === id) {
@@ -335,66 +330,93 @@ export function Admin() {
 
   const saveEdit = async (roundId: string, group: Group) => {
     if (!gName.trim() || !gPin.trim()) return;
-    setGSaving(true);
-    const existing = await getGroupByPin(tId, gPin.trim());
-    if (existing && existing.id !== group.id) {
-      setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
-      setGSaving(false);
+    // Player IDs stay with their slot, so removing player 2 does not move
+    // players 3 and 4 onto other IDs and mis-attribute their scores (B10).
+    const players: Player[] = gPlayers
+      .map((name, i) => ({ id: group.players[i]?.id ?? nanoid(), name: name.trim() }))
+      .filter((p) => p.name);
+    const format = rounds.find((r) => r.id === roundId)?.format;
+    const invalid = validatePairing(gPin.trim(), tournament?.adminPin, format, players.length);
+    if (invalid) {
+      setPinError(invalid);
       return;
     }
-    setPinError('');
-    const players: Player[] = gPlayers
-      .filter((n) => n.trim())
-      .map((name, i) => ({
-        id: group.players[i]?.id ?? nanoid(),
-        name: name.trim(),
+    setGSaving(true);
+    try {
+      const existing = await getGroupByPin(tId, gPin.trim());
+      if (existing && existing.id !== group.id) {
+        setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
+        return;
+      }
+      setPinError('');
+      await updateGroup(tId, group.id, {
+        name: gName.trim(),
+        pin: gPin.trim(),
+        players,
+      });
+      setGroupsByRound((prev) => ({
+        ...prev,
+        [roundId]: (prev[roundId] ?? []).map((g) =>
+          g.id === group.id ? { ...g, name: gName.trim(), pin: gPin.trim(), players } : g,
+        ),
       }));
-    await updateGroup(tId, group.id, {
-      name: gName.trim(),
-      pin: gPin.trim(),
-      players,
-    });
-    setGroupsByRound((prev) => ({
-      ...prev,
-      [roundId]: (prev[roundId] ?? []).map((g) =>
-        g.id === group.id ? { ...g, name: gName.trim(), pin: gPin.trim(), players } : g,
-      ),
-    }));
-    setEditingGroupId(null);
-    setGSaving(false);
+      setEditingGroupId(null);
+    } catch (err) {
+      console.error('saveEdit error', err);
+      setPinError('Could not save. Check your connection and try again.');
+    } finally {
+      setGSaving(false);
+    }
   };
 
   const savePairing = async (roundId: string) => {
     if (!gName.trim() || !gPin.trim()) return;
-    setGSaving(true);
-    const existing = await getGroupByPin(tId, gPin.trim());
-    if (existing) {
-      setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
-      setGSaving(false);
-      return;
-    }
-    setPinError('');
     const players: Player[] = gPlayers
       .filter((n) => n.trim())
       .map((name) => ({ id: nanoid(), name: name.trim() }));
-    const id = nanoid();
-    await createGroup(tId, id, {
-      name: gName.trim(),
-      pin: gPin.trim(),
-      players,
-      roundId,
-    });
-    const newGroup: Group = { id, name: gName.trim(), pin: gPin.trim(), players, roundId };
-    setGroupsByRound((prev) => ({
-      ...prev,
-      [roundId]: [...(prev[roundId] ?? []), newGroup],
-    }));
-    setAddingGroupToRound(null);
-    setGSaving(false);
+    const format = rounds.find((r) => r.id === roundId)?.format;
+    const invalid = validatePairing(gPin.trim(), tournament?.adminPin, format, players.length);
+    if (invalid) {
+      setPinError(invalid);
+      return;
+    }
+    setGSaving(true);
+    try {
+      const existing = await getGroupByPin(tId, gPin.trim());
+      if (existing) {
+        setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
+        return;
+      }
+      setPinError('');
+      const id = nanoid();
+      await createGroup(tId, id, {
+        name: gName.trim(),
+        pin: gPin.trim(),
+        players,
+        roundId,
+      });
+      const newGroup: Group = { id, name: gName.trim(), pin: gPin.trim(), players, roundId };
+      setGroupsByRound((prev) => ({
+        ...prev,
+        [roundId]: [...(prev[roundId] ?? []), newGroup],
+      }));
+      setAddingGroupToRound(null);
+    } catch (err) {
+      console.error('savePairing error', err);
+      setPinError('Could not save. Check your connection and try again.');
+    } finally {
+      setGSaving(false);
+    }
   };
 
   const removeGroup = async (roundId: string, groupId: string) => {
-    await deleteGroup(tId, groupId);
+    const name = groupsByRound[roundId]?.find((g) => g.id === groupId)?.name ?? 'this pairing';
+    if (!window.confirm(`Delete ${name}? Its PIN stops working and any scores for this round are deleted.`)) return;
+    await deleteGroupWithScores(tId, roundId, groupId);
+    setScoresByRound((prev) => ({
+      ...prev,
+      [roundId]: (prev[roundId] ?? []).filter((d) => d.groupId !== groupId),
+    }));
     setGroupsByRound((prev) => ({
       ...prev,
       [roundId]: (prev[roundId] ?? []).filter((g) => g.id !== groupId),
@@ -437,20 +459,24 @@ export function Admin() {
   };
 
   const removeRound = async (id: string) => {
+    // Cascades to the round's groups and scores (B6)
     await deleteRound(tId, id);
     setRounds((rs) => rs.filter((r) => r.id !== id));
+    setGroupsByRound((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     if (expandedRound === id) setExpandedRound(null);
   };
 
-  const toggleRoundStatus = async (round: Round) => {
-    const next =
-      round.status === 'pending'
-        ? 'active'
-        : round.status === 'active'
-          ? 'complete'
-          : 'pending';
+  /**
+   * Change a round's status. Scores are only deleted when explicitly asked
+   * (reset to pending); reopening a completed round keeps them (B9).
+   */
+  const setRoundStatus = async (round: Round, next: Round['status'], clearScores = false) => {
     await updateRound(tId, round.id, { status: next });
-    if (round.status === 'complete' && next === 'pending') {
+    if (clearScores) {
       await clearRoundScores(tId, round.id);
       setScoresByRound((s) => ({ ...s, [round.id]: [] }));
     }
@@ -460,18 +486,32 @@ export function Admin() {
   const saveRoundFields = async () => {
     if (!editingRoundFieldId) return;
     setREditSaving(true);
-    const currentRound = rounds.find((r) => r.id === editingRoundFieldId);
-    const data: Partial<Omit<Round, 'id'>> = { format: rEditFormat, courseId: rEditCourseId || undefined };
-    await updateRound(tId, editingRoundFieldId, data);
-    // If the format changed, old score docs have the wrong hole structure — clear them
-    // so useGroup rebuilds fresh holes for the new format on next load.
-    if (currentRound && currentRound.format !== rEditFormat) {
-      await clearRoundScores(tId, editingRoundFieldId);
-      setScoresByRound((s) => ({ ...s, [editingRoundFieldId]: [] }));
+    try {
+      const currentRound = rounds.find((r) => r.id === editingRoundFieldId);
+      const data: Partial<Omit<Round, 'id'>> = { format: rEditFormat, courseId: rEditCourseId || undefined };
+      // A new course brings its own pars and hole count (B15)
+      const newCourse = rEditCourseId && rEditCourseId !== currentRound?.courseId
+        ? courses.find((c) => c.id === rEditCourseId)
+        : undefined;
+      if (newCourse) {
+        data.holes = newCourse.holes;
+        data.par = newCourse.par.slice(0, newCourse.holes);
+      }
+      await updateRound(tId, editingRoundFieldId, data);
+      // If the format or hole count changed, old score docs have the wrong hole structure —
+      // clear them so useGroup rebuilds fresh holes on next load.
+      if (currentRound && (currentRound.format !== rEditFormat || (data.holes && data.holes !== currentRound.holes))) {
+        await clearRoundScores(tId, editingRoundFieldId);
+        setScoresByRound((s) => ({ ...s, [editingRoundFieldId]: [] }));
+      }
+      setRounds((rs) => rs.map((r) => r.id === editingRoundFieldId ? { ...r, ...data } : r));
+      setEditingRoundFieldId(null);
+    } catch (err) {
+      console.error('saveRoundFields error', err);
+      window.alert('Could not save the round. Check your connection and try again.');
+    } finally {
+      setREditSaving(false);
     }
-    setRounds((rs) => rs.map((r) => r.id === editingRoundFieldId ? { ...r, ...data } : r));
-    setEditingRoundFieldId(null);
-    setREditSaving(false);
   };
 
   // ── Tournament Settings ───────────────────────────────────────────────────────
@@ -497,8 +537,28 @@ export function Admin() {
   const saveTournamentSettings = async () => {
     if (!tName.trim()) return;
     setTSettingsSaving(true);
-    await updateTournamentData({ name: tName.trim(), logoUrl: tLogoUrl || undefined });
-    setTSettingsSaving(false);
+    try {
+      await updateTournamentData({ name: tName.trim(), logoUrl: tLogoUrl || undefined });
+    } catch (err) {
+      console.error('saveTournamentSettings error', err);
+      window.alert('Could not save settings. Check your connection and try again.');
+    } finally {
+      setTSettingsSaving(false);
+    }
+  };
+
+  const exportBackup = async () => {
+    setExporting(true);
+    try {
+      const backup = await exportTournament(tId);
+      const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-');
+      downloadJson(`${tId}-backup-${stamp}.json`, backup);
+    } catch (err) {
+      console.error('exportBackup error', err);
+      window.alert('Export failed. Check your connection and try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const copyPublicUrl = async () => {
@@ -647,6 +707,21 @@ export function Admin() {
                     {settingsCopied ? '✓ Copied' : 'Copy'}
                   </button>
                 </div>
+              </div>
+
+              {/* Backup */}
+              <div className="flex flex-col gap-1.5 border-t border-gray-700 pt-3">
+                <label className="text-gray-400 text-xs font-medium">Backup</label>
+                <p className="text-gray-500 text-xs">
+                  Download every round, pairing, and score as a JSON file. Do this before and after each round.
+                </p>
+                <button
+                  onClick={exportBackup}
+                  disabled={exporting}
+                  className="w-full py-2.5 bg-gray-700 rounded-xl font-semibold text-sm disabled:opacity-40"
+                >
+                  {exporting ? 'Exporting…' : 'Download backup (.json)'}
+                </button>
               </div>
             </div>
           )}
@@ -1031,7 +1106,7 @@ export function Admin() {
                             className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
                             placeholder="4-digit PIN"
                             value={gPin}
-                            onChange={(e) => { setGPin(e.target.value); setPinError(''); }}
+                            onChange={(e) => { setGPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setPinError(''); }}
                             maxLength={4}
                             inputMode="numeric"
                           />
@@ -1197,7 +1272,7 @@ export function Admin() {
                           className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
                           placeholder="4-digit PIN"
                           value={gPin}
-                          onChange={(e) => { setGPin(e.target.value); setPinError(''); }}
+                          onChange={(e) => { setGPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setPinError(''); }}
                           maxLength={4}
                           inputMode="numeric"
                         />
@@ -1294,35 +1369,55 @@ export function Admin() {
       {/* Round status confirmation modal */}
       {pendingStatusRound && (() => {
         const r = pendingStatusRound;
-        const nextStatus = r.status === 'pending' ? 'active' : r.status === 'active' ? 'complete' : 'pending';
-        const isDestructive = r.status === 'active' || r.status === 'complete';
+        const close = () => setPendingStatusRound(null);
         const message =
           r.status === 'pending'
             ? `Start "${r.name}"? Players will be able to enter scores.`
             : r.status === 'active'
               ? `Mark "${r.name}" as complete? Players will lose editing access.`
-              : `Reset "${r.name}" to pending? All scores will be deleted. Groups and pairings will be kept.`;
+              : `"${r.name}" is complete. Reopen it so players can correct scores, or reset it to pending and delete every score.`;
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6">
             <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
-              <p className={`text-sm leading-relaxed ${isDestructive ? 'text-red-300' : 'text-gray-200'}`}>
+              <p className={`text-sm leading-relaxed ${r.status === 'active' ? 'text-red-300' : 'text-gray-200'}`}>
                 {message}
               </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setPendingStatusRound(null)}
-                  className="flex-1 h-10 bg-gray-600 rounded-xl text-sm text-gray-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => { toggleRoundStatus(r); setPendingStatusRound(null); }}
-                  className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white
-                    ${isDestructive ? 'bg-red-700' : 'bg-green-700'}`}
-                >
-                  {nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)}
-                </button>
-              </div>
+              {r.status === 'complete' ? (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => { setRoundStatus(r, 'active'); close(); }}
+                    className="h-10 rounded-xl text-sm font-semibold text-white bg-green-700"
+                  >
+                    Reopen (keep scores)
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!window.confirm(`Delete every score in "${r.name}"? This cannot be undone.`)) return;
+                      setRoundStatus(r, 'pending', true);
+                      close();
+                    }}
+                    className="h-10 rounded-xl text-sm font-semibold text-white bg-red-700"
+                  >
+                    Reset to pending (delete scores)
+                  </button>
+                  <button onClick={close} className="h-10 bg-gray-600 rounded-xl text-sm text-gray-200">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <button onClick={close} className="flex-1 h-10 bg-gray-600 rounded-xl text-sm text-gray-200">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => { setRoundStatus(r, r.status === 'pending' ? 'active' : 'complete'); close(); }}
+                    className={`flex-1 h-10 rounded-xl text-sm font-semibold text-white
+                      ${r.status === 'active' ? 'bg-red-700' : 'bg-green-700'}`}
+                  >
+                    {r.status === 'pending' ? 'Active' : 'Complete'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );

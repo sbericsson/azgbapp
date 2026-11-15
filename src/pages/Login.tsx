@@ -3,43 +3,40 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { findTournamentByCode } from '../lib/firestore';
 
+function initialTournamentCode(): string {
+  const urlCode = new URLSearchParams(window.location.search).get('code');
+  if (urlCode) return urlCode.trim();
+  try {
+    const raw = localStorage.getItem('azgb_session');
+    const session = raw ? JSON.parse(raw) : null;
+    return typeof session?.tournamentId === 'string' ? session.tournamentId : '';
+  } catch {
+    // Ignore malformed persisted sessions and fall back to a blank login form.
+    return '';
+  }
+}
+
 export function Login() {
   const { loginAsGroup, loginAsAdmin, loginAsAppAdmin } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [tournamentCode, setTournamentCode] = useState('');
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // Pre-fill from ?code= URL param (shared login links), else the last session
+  const [tournamentCode, setTournamentCode] = useState(initialTournamentCode);
+  const [logo, setLogo] = useState<{ code: string; url: string | null }>({ code: '', url: null });
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // Pre-fill from ?code= URL param (shared login links)
-    const params = new URLSearchParams(window.location.search);
-    const urlCode = params.get('code');
-    if (urlCode) {
-      setTournamentCode(urlCode.trim());
-      return;
-    }
-    // Fall back to last session
-    const raw = localStorage.getItem('azgb_session');
-    if (!raw) return;
-    try {
-      const session = JSON.parse(raw);
-      if (session.tournamentId) {
-        setTournamentCode(session.tournamentId);
-      }
-    } catch {
-      // Ignore malformed persisted sessions and fall back to a blank login form.
-    }
-  }, []);
+  const trimmedCode = tournamentCode.trim();
+  const logoUrl = trimmedCode && logo.code === trimmedCode ? logo.url : null;
 
   useEffect(() => {
-    const code = tournamentCode.trim();
-    if (!code) { setLogoUrl(null); return; }
-    findTournamentByCode(code).then((t) => {
-      setLogoUrl(t?.logoUrl ?? null);
-    }).catch(() => { setLogoUrl(null); });
-  }, [tournamentCode]);
+    if (!trimmedCode) return;
+    let cancelled = false;
+    findTournamentByCode(trimmedCode)
+      .then((t) => { if (!cancelled) setLogo({ code: trimmedCode, url: t?.logoUrl ?? null }); })
+      .catch(() => { if (!cancelled) setLogo({ code: trimmedCode, url: null }); });
+    return () => { cancelled = true; };
+  }, [trimmedCode]);
 
   const backspace = () => setPin((p) => p.slice(0, -1));
   const clear = () => setPin('');

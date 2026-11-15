@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { listRounds, listCourses } from '../lib/firestore';
+import { subscribeRounds, listCourses } from '../lib/firestore';
 import type { Round, Course } from '../types/tournament';
 
 const dayOrder: Round['day'][] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -25,24 +25,41 @@ const formatLabel: Record<string, string> = {
 export function Home() {
   const { group, logout, tournamentId, tournament } = useContext(AuthContext);
   const navigate = useNavigate();
-  const [rounds, setRounds] = useState<Round[]>([]);
+  const [allRounds, setAllRounds] = useState<Round[]>([]);
   const [courseMap, setCourseMap] = useState<Map<string, Course>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+
+  // Live subscription so a round going active appears without restarting the app (B13)
+  useEffect(() => {
+    if (!tournamentId) return;
+    return subscribeRounds(
+      tournamentId,
+      (next) => {
+        setAllRounds(next);
+        setError(false);
+        setLoading(false);
+      },
+      () => {
+        setError(true);
+        setLoading(false);
+      },
+    );
+  }, [tournamentId, retryKey]);
 
   useEffect(() => {
     if (!tournamentId) return;
-    Promise.all([listRounds(tournamentId), listCourses(tournamentId)])
-      .then(([allRounds, allCourses]) => {
-        const myRounds = allRounds.filter((r) => {
-          if (r.status === 'pending') return false;
-          if (r.status === 'complete') return true; // all completed rounds visible to everyone
-          return !group || group.roundId === r.id;  // active: only their assigned round
-        });
-        setRounds(myRounds);
-        setCourseMap(new Map(allCourses.map((c) => [c.id, c])));
-      })
-      .finally(() => setLoading(false));
-  }, [group, tournamentId]);
+    listCourses(tournamentId)
+      .then((allCourses) => setCourseMap(new Map(allCourses.map((c) => [c.id, c]))))
+      .catch(() => {});
+  }, [tournamentId]);
+
+  const rounds = allRounds.filter((r) => {
+    if (r.status === 'pending') return false;
+    if (r.status === 'complete') return true; // all completed rounds visible to everyone
+    return !group || group.roundId === r.id;  // active: only their assigned round
+  });
 
   const byDay = dayOrder.reduce<Record<string, Round[]>>((acc, day) => {
     const dayRounds = rounds.filter((r) => r.day === day);
@@ -67,7 +84,19 @@ export function Home() {
           <p className="text-gray-400 text-center py-8">Loading rounds…</p>
         )}
 
-        {!loading && rounds.length === 0 && (
+        {!loading && error && (
+          <div className="text-center py-12">
+            <p className="text-gray-300">Couldn’t load rounds.</p>
+            <button
+              onClick={() => { setLoading(true); setRetryKey((k) => k + 1); }}
+              className="mt-4 px-5 h-12 rounded-xl bg-gray-700 text-white font-medium"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && !error && rounds.length === 0 && (
           <div className="text-center py-12">
             <p className="text-4xl mb-3">🏌️</p>
             <p className="text-gray-400">No active rounds yet.</p>

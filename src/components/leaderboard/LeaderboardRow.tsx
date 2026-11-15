@@ -3,7 +3,6 @@ import type { RoundFormat } from '../../types/tournament';
 
 interface LeaderboardRowProps {
   entry: LeaderboardEntry;
-  rank: number;
   format: RoundFormat;
   onClick?: () => void;
 }
@@ -21,8 +20,13 @@ function scoreColor(score: number, format: string): string {
   return 'text-blue-400';
 }
 
-export function LeaderboardRow({ entry, rank, format, onClick }: LeaderboardRowProps) {
-  const rankBadge = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
+export function LeaderboardRow({ entry, format, onClick }: LeaderboardRowProps) {
+  const { rank, tied } = entry;
+  // Medals only for an outright position; ties show "T2" etc.
+  const rankBadge =
+    rank === null ? '–'
+    : tied ? `T${rank}`
+    : rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
 
   return (
     <div
@@ -50,8 +54,8 @@ export function LeaderboardRow({ entry, rank, format, onClick }: LeaderboardRowP
           </p>
         )}
       </div>
-      <span className={`text-2xl font-bold ${scoreColor(entry.score, format)}`}>
-        {scoreDisplay(entry.score, format)}
+      <span className={`text-2xl font-bold ${entry.holesCompleted === 0 ? 'text-gray-500' : scoreColor(entry.score, format)}`}>
+        {entry.holesCompleted === 0 ? '—' : scoreDisplay(entry.score, format)}
       </span>
     </div>
   );

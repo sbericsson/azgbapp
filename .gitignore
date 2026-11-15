@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Server-side release builds (scripts/build-release.sh)
+releases/
+dist.next
 *.local
 
 # Editor directories and files

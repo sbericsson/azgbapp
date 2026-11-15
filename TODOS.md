@@ -6,39 +6,36 @@ Generated from design doc: `sericsson-main-design-20260326-171042.md`
 
 ## Phase 1: Self-Service Tournament Creation
 
-### Foundation
-- [ ] Remove `LaunchGate` component and all references in `src/App.tsx`
-- [ ] Extract `randomPin()` from `src/pages/Admin.tsx` → `src/lib/pin.ts`
-- [ ] Add `generateTournamentCode()` to `src/lib/nanoid.ts` (8-char, A-Z + 2-9, no O/I/0/1)
-- [ ] Add unit tests for `generateTournamentCode()` (length, alphabet, no ambiguous chars)
+Done: `LaunchGate` removed; `randomPin()` in `src/lib/pin.ts`; `generateTournamentCode()` with tests;
+`selfService` flag; public `/create` route with collision check and saved-credentials gate;
+`CourseSearchStep` course search with manual fallback; `VITE_GOLF_COURSE_API_KEY` in `.env.example`.
 
-### Data Model
-- [ ] Add `selfService?: boolean` to `Tournament` interface in `src/types/tournament.ts`
+Not built:
+- [ ] Separate 4-step `OnboardingWizard` page (golfers → rounds → groups → share). The Admin panel covers these steps today.
+- [ ] Do not publicise `/create` until backend access control (R13 below) ships.
 
-### `/create` Route
-- [ ] Add `/create` as a public route in `src/App.tsx` (no auth, no LaunchGate)
-- [ ] Build `src/pages/CreateTournament.tsx` — form: tournament name + organizer-chosen admin PIN
-- [ ] Implement Firestore write with collision check (read-before-write on generated code)
-- [ ] Build success screen: show tournament code + admin PIN in large text, copy-to-clipboard, "I've saved these" gate before wizard entry
-- [ ] Add `VITE_GOLF_COURSE_API_KEY` to `.env.example`
+---
 
-### Course Search (Wizard Step 2)
-- [ ] Build `src/components/wizard/CourseSearchStep.tsx`
-  - Debounced search input → golfcourseapi.com `GET /courses?search={query}`
-  - Dropdown with matching courses (name + location)
-  - Auto-fill: name, holes, par[]
-  - Manual fallback if course not found
-  - Organizer can override any auto-filled field
+## Repository review follow-ups (`REPO_REVIEW.md`, 2026-11-15)
 
-### Onboarding Wizard
-- [ ] Build `src/pages/OnboardingWizard.tsx` with 4 steps:
-  - Step 1: Add golfers (name per golfer)
-  - Step 2: Create rounds (name, day, format, course via CourseSearchStep)
-  - Step 3: Create groups (pick players, auto-generate PINs via `pin.ts`, optional override)
-  - Step 4: Share — one copyable invite message per group
-- [ ] Trigger: show wizard when `tournament.selfService === true && rounds.length === 0`
-- [ ] Resumable: re-entry opens at first step with missing data
-- [ ] Once rounds + groups exist: dismiss wizard, show standard Admin panel
+Done on `main`: R15 interim (OpenRouter key blanked in production builds), R4 + R3 (shared
+`standings.ts`, Wolf carry derived at read time), R1 (local-first lock, sync status, double-tap
+guard), R5 (admin write fixes), R6 partial (reopen a completed round without deleting scores),
+R7 (JSON backup and restore), R8, R9 (CI and standings/backup tests), R10, R11 partial, R12, R14.
+
+Open:
+- [ ] **R13 (P0 before onboarding other organisers):** email-link sign-in for organisers and scorers,
+  authorisation in Firestore rules, no PINs or emails in public documents, emulator rules tests.
+  Needs a billing-enabled Firebase plan (Spark allows 5 sign-in emails a day). Until then the
+  public results page still downloads PIN-bearing documents.
+- [ ] **R15 proper:** route OpenRouter and golf-course API calls through a server-side proxy with a
+  rate limit; the course-search key is still in the bundle.
+- [ ] **R6 rest:** admin screen to edit a group's hole scores.
+- [ ] **R2 (P2, P1 once organisers edit scores):** per-hole writes with dirty tracking; persist the
+  in-progress hole.
+- [ ] **R11 rest:** whole-round review before the last lock.
+- [ ] Playwright offline test: lock three holes offline against the Firestore emulator, reconnect, assert sync.
+- [ ] Firebase SDK is pinned to 12.9.x: 12.19 adds ~60 kB gzipped to the first load. Revisit when code-splitting.
 
 ---
 
@@ -71,12 +68,13 @@ Generated from design doc: `sericsson-main-design-20260326-171042.md`
 - [ ] Add baseline tests for `src/lib/scoring/bestBall.ts` before modifying
 - [ ] Add baseline tests for `src/lib/scoring/scramble.ts` before modifying
 - [ ] Update `computeBestScore()` in `bestBall.ts`: add `useNet = false` flag, use `s.net ?? s.gross` when `useNet`
-- [ ] Update `bestBallTotalToPar()` similarly
+- [ ] Update `teamToPar()` / `playerToPar()` in `standings.ts` similarly
 - [ ] Update scramble net scoring: team net = gross team score − scramble handicap
   - `saturday_pm` → 35% of combined handicap
   - `sunday` → 10% of combined handicap
   - Store as `scrambleHandicapPct?: number` on round (auto from `day` field)
-- [ ] Add comment to `computeCarryForHole()` in `wolf.ts`: carry-over uses gross scores only, even when `useHandicaps: true`
+- [ ] Add comment to `deriveWolfHoles()` in `standings.ts`: carry-over uses gross scores only, even when `useHandicaps: true`
+- [ ] Net scoring goes in `src/lib/scoring/standings.ts` (`teamStrokes` / `playerToPar`) so every screen picks it up
 
 ---
 
@@ -93,5 +91,5 @@ Generated from design doc: `sericsson-main-design-20260326-171042.md`
 
 ## Post-Phase 1 (deferred)
 
-- [ ] Tighten Firestore security rules — audit `firestore.ts`, move from fully permissive to write-once for unauthenticated tournament creation
+- [ ] Tighten Firestore security rules — superseded by R13 above
 - [ ] DRY `generateBestBallFeedback` / `generateScrambleFeedback` in `feedback.ts` (95% identical)

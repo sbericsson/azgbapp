@@ -36,12 +36,13 @@ If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to bu
 
 ## Project Overview
 
-**AZGB** is a mobile-first real-time scoring app for a private 4-round golf tournament. Built with React, TypeScript, and Firebase Firestore. Golfers enter scores hole-by-hole on their phones; an admin (commissioner) manages setup and configuration via a PIN-protected panel.
+**AZGB / Golf Bender** is a mobile-first real-time scoring app for golf tournaments. Built with React, TypeScript, and Firebase Firestore. Multiple tournaments live side by side, each identified by a code; organisers create them at `/create` or an app admin creates them. Golfers enter scores hole-by-hole on their phones; each tournament's organiser manages setup via a PIN-protected admin panel. `REPO_REVIEW.md` (branch `claude/quirky-sagan-sd1tr9`) is the current review; `TODOS.md` tracks what is open from it.
 
 ### Scoring Formats
-- **Wolf**: One player per hole makes a lone/partner decision; point-based scoring with carry-over on ties
-- **Best Ball**: 4-person teams; best score per hole counts toward team total (tracked ±par)
-- **Scramble**: All players hit, select best shot, repeat; 2-person pairs (Sat PM) or 4-person groups (Sun)
+- **Wolf**: 4 players; one player per hole makes a lone/partner decision; point-based scoring with carry-over on ties
+- **Best Ball**: best score per hole counts toward team total (tracked ±par)
+- **Scramble**: All players hit, select best shot, repeat; one team score per hole
+- **Gauntlet**: 2 players; holes split in thirds: best ball → scramble → alternate shot
 
 ---
 
@@ -77,9 +78,12 @@ npm run preview      # Preview production build locally
 # After committing and pushing to main:
 ssh user@server
 bash /var/www/azgb/deploy.sh
-# Script: git pull → npm ci → npm run build
-# nginx already serves dist/ — no restart needed
+# Script: git reset to origin/main → npm ci → scripts/build-release.sh
+# build-release.sh builds into releases/<stamp>-<sha> and atomically swaps the dist/ symlink;
+# a failed build leaves the live site untouched. nginx needs no restart.
 ```
+
+CI (`.github/workflows/ci.yml`) runs lint, tests, and build on pushes to `main` and on PRs.
 
 ---
 
@@ -111,23 +115,30 @@ src/
 ├── constants/
 │   └── wolf.ts                # Wolf point tables (lone/partner/lose)
 ├── lib/
-│   ├── firestore.ts           # All Firestore CRUD operations
+│   ├── firestore.ts           # All Firestore CRUD operations (cascading deletes, deleteField for undefined)
+│   ├── backup.ts              # Tournament JSON export / restore (backupFormat.ts is the pure part)
 │   └── scoring/
-│       ├── wolf.ts            # Wolf calculation logic, carry-over, leaderboard
-│       ├── wolf.test.ts       # Wolf scoring unit tests
-│       ├── bestBall.ts        # Best ball calculations
-│       └── scramble.ts        # Scramble calculations
+│       ├── standings.ts       # THE place totals, ranks, and derived Wolf carry are computed
+│       ├── wolf.ts            # Wolf per-hole points, rotation, type guard
+│       ├── bestBall.ts        # Best ball helpers and type guard
+│       ├── scramble.ts        # Scramble helpers and type guard
+│       ├── gauntlet.ts        # Gauntlet segments and type guard
+│       └── feedback*.ts       # Post-lock commentary (static; AI via OpenRouter when a key is set)
 ├── hooks/
 │   ├── useAuth.ts             # Auth context: PIN login, session restore
 │   ├── useGroup.ts            # Group score subscriptions and saves
 │   └── useLeaderboard.ts      # Leaderboard aggregation
 ├── pages/
-│   ├── Login.tsx              # 4-digit PIN entry keypad
-│   ├── Home.tsx               # Group's active rounds list
+│   ├── Login.tsx              # Tournament code + 4-digit PIN keypad (?code= pre-fills)
+│   ├── CreateTournament.tsx   # Public self-service tournament creation
+│   ├── Home.tsx               # Group's rounds list (live subscription)
 │   ├── Scorecard.tsx          # Hole-by-hole entry (protected)
-│   ├── PublicScorecard.tsx    # Public scorecard (no auth)
+│   ├── PublicScorecard.tsx    # Read-only scorecard of another group
 │   ├── Leaderboard.tsx        # Round leaderboard
-│   └── Admin.tsx              # Commissioner control panel
+│   ├── PublicResults.tsx      # /results/:tournamentId, no login
+│   ├── PrintResults.tsx       # Printable results (admin)
+│   ├── Admin.tsx              # Tournament admin panel
+│   └── AppAdmin.tsx           # App admin: all tournaments, archive, restore
 └── components/
     ├── scorecard/             # HoleHeader, HoleNav, WolfControls, etc.
     └── leaderboard/           # WolfLeaderboard, TeamLeaderboard, etc.
@@ -138,13 +149,17 @@ src/
 ## Data Model (Firestore)
 
 ```
-tournaments/{tournamentId}
+config/app
+  appAdminPin: string            # app-wide admin (blank tournament code at login)
+
+tournaments/{tournamentId}       # ID is the tournament code
   adminPin: string
   name: string
   createdAt: number
+  logoUrl?, selfService?, archivedAt?
 
   rounds/{roundId}
-    name, day, format, status, holes, par[], courseId?
+    name, day (weekday), format, status, holes, par[], courseId?
 
     scores/{groupId}             # Live score doc (created on first save)
       groupId, updatedAt, holes: HoleScore[]
@@ -164,31 +179,39 @@ tournaments/{tournamentId}
 ## Key Architectural Patterns
 
 ### Auth / Session
-- Session stored in `sessionStorage` only — clearing a tab logs out.
-- `useAuth` restores session from storage on mount via one Firestore read.
-- Admin login checks `tournament.adminPin`; group login checks `group.pin`.
-- Route guards: `RootRoute`, `ProtectedGroupRoute`, `ProtectedAdminRoute` in `App.tsx`.
+- Session stored in `localStorage` (`azgb_session`) with a 16-hour sliding expiry, refreshed while the app is in use. A network error during restore keeps the session.
+- `useAuth` restores session from storage on mount.
+- Admin login checks `tournament.adminPin`; group login checks `group.pin`; blank code + `config/app.appAdminPin` is app admin.
+- Route guards: `RootRoute`, `ProtectedGroupRoute`, `ProtectedAdminRoute`, `ProtectedAppAdminRoute` in `App.tsx`. These are UI-only: nothing is enforced server-side yet (R13).
 
-### Score Locking
+### Score Locking (local-first)
 - Golfers lock holes one at a time as they finish.
-- Locked holes are source-of-truth from Firestore (immutable locally).
-- Unlocked holes are driven by local state. `useGroup` merges remote + local on updates.
+- `saveHole` is fire-and-forget: it applies the write to the local Firestore cache and returns at once. Never `await` a Firestore write in the scoring UI — offline, the promise does not settle until reconnect.
+- Sync state comes from snapshot `metadata.hasPendingWrites` (`pendingSync` in `useGroup`).
+- Locked holes are source-of-truth from Firestore. Unlocked holes are driven by local state; `useGroup` merges remote + local on updates.
+
+### Standings
+- Every total and rank goes through `src/lib/scoring/standings.ts` (`computeStandings`, `teamToPar`, `playerToPar`, `deriveWolfHoles`). Do not add per-screen aggregation.
+- Only locked holes count; par is looked up by the hole's own index.
+- Ties share a rank (`T2`); groups with no locked holes are unranked and listed last.
 
 ### Real-Time Subscriptions
-- `useGroup` subscribes to `rounds/{roundId}/scores/{groupId}` via Firestore `onSnapshot`.
-- `useLeaderboard` subscribes to all scores in a round for aggregation.
-- Firestore `persistentMultipleTabManager()` handles multi-tab sync.
+- `useGroup` subscribes to `rounds/{roundId}/scores/{groupId}` with metadata changes.
+- `useLeaderboard` subscribes to all scores in a round. Home and Scorecard subscribe to rounds.
+- Firestore uses a persistent single-tab cache (`persistentSingleTabManager`) in `firebase.ts`.
 
 ### Wolf Rotation & Carry-Over
 - Wolf rotates per hole: `players[holeIndex % 4]`.
 - Ties carry 1-point base stake to next hole (lone wolf bonuses do NOT carry).
-- `computeCarryForHole()` scans backward through locked holes to sum consecutive ties.
+- Carry and points are derived from the stored inputs at read time by `deriveWolfHoles()`, so correcting an earlier hole updates later ones. The `carry`/`points` stored on each hole are informational only.
 
 ---
 
 ## Important Gotchas
 
-- **Firestore rules are permissive** (`allow read, write: if true`). PIN validation is app-level only. Do not add user data you wouldn't want publicly readable.
+- **Firestore rules are permissive** (`allow read, write: if true`). PIN validation is app-level only, and every PIN (including admin PINs) is readable by anyone. Do not add user data you wouldn't want publicly readable. Backend access control is R13 in `TODOS.md`.
+- **API keys in the bundle**: any `VITE_*` value ships to browsers. `deploy.sh` blanks `VITE_OPENROUTER_API_KEY`; the golf-course key is still public until a proxy exists.
+- **Firestore rejects `undefined`**: the update helpers in `firestore.ts` turn `undefined` into `deleteField()`; use them rather than raw `updateDoc`.
 - **TypeScript strict mode** is enabled — builds fail on type errors.
 - **Admin PIN not hashed** — treat as a simple shared secret.
 - **Random PIN generation** excludes the admin PIN to prevent collisions (fixed in 779f4c2).
@@ -199,15 +222,15 @@ tournaments/{tournamentId}
 ## Common Tasks
 
 ### Add a New Scoring Format
-1. Create `src/lib/scoring/{format}.ts` with compute and total functions.
-2. Add format type to `src/types/tournament.ts → RoundFormat`.
+1. Create `src/lib/scoring/{format}.ts` with a type guard and per-hole helpers.
+2. Add format type to `src/types/tournament.ts → RoundFormat`, and handle it in `standings.ts`.
 3. Create scorecard component in `src/components/scorecard/`.
 4. Create leaderboard component in `src/components/leaderboard/`.
 5. Wire up in `Scorecard.tsx` and `Leaderboard.tsx`.
 
 ### Modify Wolf Scoring
 1. Edit point values in `src/constants/wolf.ts`.
-2. Update logic in `src/lib/scoring/wolf.ts`.
+2. Per-hole logic is in `src/lib/scoring/wolf.ts`; carry and totals are in `standings.ts`.
 3. Run `npm test` to verify carry-over and tie logic.
 
 ### Add a Golfer Field

@@ -12,9 +12,14 @@ interface UseGroupReturn {
   scoreDoc: GroupScoreDoc | null;
   holes: HoleScore[];
   loading: boolean;
-  saving: boolean;
+  /** True while this phone has writes the server has not yet acknowledged. */
+  pendingSync: boolean;
   saveError: boolean;
-  saveHole: (holeIndex: number, hole: HoleScore) => Promise<void>;
+  /**
+   * Save a hole. Applies locally and queues the write immediately; it does not
+   * wait for the server, so it works the same offline (B1).
+   */
+  saveHole: (holeIndex: number, hole: HoleScore) => void;
   setLocalHole: (holeIndex: number, hole: HoleScore) => void;
 }
 
@@ -52,89 +57,99 @@ export function useGroup(
 ): UseGroupReturn {
   const [scoreDoc, setScoreDoc] = useState<GroupScoreDoc | null>(null);
   const [holes, setHoles] = useState<HoleScore[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  // Which subscription has delivered its first snapshot; loading is derived from it
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [pendingSync, setPendingSync] = useState(false);
   const [saveError, setSaveError] = useState(false);
 
-  // Always up-to-date reference to holes — avoids stale closure in saveHole
+  // Always up-to-date copy of holes — avoids stale closures in saveHole. Every
+  // change goes through commitHoles so the ref and state never diverge.
   const holesRef = useRef<HoleScore[]>([]);
-  holesRef.current = holes;
+  const subscribedKeyRef = useRef<string | null>(null);
+  const commitHoles = useCallback((next: HoleScore[]) => {
+    holesRef.current = next;
+    setHoles(next);
+  }, []);
 
   useEffect(() => {
-    if (!tournamentId || !round || !groupId) {
-      setLoading(false);
-      return;
+    if (!tournamentId || !round || !groupId) return;
+    const key = `${tournamentId}/${round.id}/${groupId}`;
+    // A different round or group must not inherit the previous one's holes.
+    // A resubscribe for the same key (e.g. the round doc changed) keeps local edits.
+    if (subscribedKeyRef.current !== key) {
+      subscribedKeyRef.current = key;
+      holesRef.current = [];
     }
-
-    setLoading(true);
 
     const unsub = subscribeGroupScores(
       tournamentId,
       round.id,
       groupId,
-      (doc) => {
+      (doc, meta) => {
+        setPendingSync(meta.hasPendingWrites);
         if (doc && holesMatchFormat(doc.holes, round.format)) {
           setScoreDoc(doc);
           // Merge: keep local state for any unlocked holes (user may be entering data),
           // but always accept locked holes from Firestore as the source of truth.
-          setHoles((prev) => {
-            if (prev.length === 0) return doc.holes;
-            return prev.map((localHole, i) => {
-              const remoteHole = doc.holes[i];
-              return remoteHole?.locked ? remoteHole : localHole;
-            });
-          });
+          const prev = holesRef.current;
+          commitHoles(
+            prev.length === 0
+              ? doc.holes
+              : prev.map((localHole, i) => {
+                  const remoteHole = doc.holes[i];
+                  return remoteHole?.locked ? remoteHole : localHole;
+                }),
+          );
         } else {
           // No doc, or stale doc from a previous format — build fresh holes.
-          const initial = buildInitialHoles(round, players);
-          setHoles(initial);
+          commitHoles(buildInitialHoles(round, players));
         }
-        setLoading(false);
+        setLoadedKey(key);
       },
     );
 
     return unsub;
-  }, [groupId, players, round, tournamentId]);
+  }, [groupId, players, round, tournamentId, commitHoles]);
 
   const setLocalHole = useCallback(
     (holeIndex: number, hole: HoleScore) => {
-      setHoles((prev) => {
-        const next = [...prev];
-        next[holeIndex] = hole;
-        return next;
-      });
+      const next = [...holesRef.current];
+      next[holeIndex] = hole;
+      commitHoles(next);
     },
-    [],
+    [commitHoles],
   );
 
   const saveHole = useCallback(
-    async (holeIndex: number, hole: HoleScore) => {
+    (holeIndex: number, hole: HoleScore) => {
       if (!tournamentId || !round || !groupId) return;
 
-      // Optimistic local update
-      setHoles((prev) => {
-        const next = [...prev];
-        next[holeIndex] = hole;
-        return next;
-      });
-
-      // Build the full holes array to persist: latest known state + this hole
+      // Build the full holes array to persist: latest known state + this hole.
+      // Update the ref synchronously so a second save before re-render keeps this one.
       const next = [...holesRef.current];
       next[holeIndex] = hole;
+      commitHoles(next);
+      setSaveError(false);
+      setPendingSync(true);
 
-      setSaving(true);
+      // Fire and forget: the local cache applies the write at once and the SDK
+      // syncs it when a connection is available. The promise only settles on
+      // server acknowledgement, so it is never awaited by the UI.
       try {
-        await saveGroupScores(tournamentId, round.id, groupId, next);
-        setSaveError(false);
+        saveGroupScores(tournamentId, round.id, groupId, next).catch((err) => {
+          console.error('saveHole error', err);
+          setSaveError(true);
+        });
       } catch (err) {
         console.error('saveHole error', err);
         setSaveError(true);
-      } finally {
-        setSaving(false);
       }
     },
-    [tournamentId, round, groupId],
+    [tournamentId, round, groupId, commitHoles],
   );
 
-  return { scoreDoc, holes, loading, saving, saveError, saveHole, setLocalHole };
+  const loading = Boolean(tournamentId && round && groupId) &&
+    loadedKey !== `${tournamentId}/${round?.id}/${groupId}`;
+
+  return { scoreDoc, holes, loading, pendingSync, saveError, saveHole, setLocalHole };
 }

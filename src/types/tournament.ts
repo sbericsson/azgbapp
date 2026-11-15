@@ -44,6 +44,7 @@ export interface Tournament {
   createdAt: number;
   logoUrl?: string;
   selfService?: boolean; // true when created via /create; triggers onboarding wizard
+  archivedAt?: number; // set when archived: hidden from the list, code login blocked
 }
 
 export interface AppConfig {

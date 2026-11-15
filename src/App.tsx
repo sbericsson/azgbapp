@@ -1,4 +1,4 @@
-import { type ReactElement, useContext, useEffect } from 'react';
+import { type ReactElement, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthContext, useAuthProvider } from './hooks/useAuth';
 import { Login } from './pages/Login';
@@ -51,18 +51,9 @@ function ProtectedAdminRoute({ element }: { element: ReactElement }) {
   return element;
 }
 
-function BypassRoute() {
-  useEffect(() => {
-    localStorage.setItem('azgb_bypass', 'true');
-    window.location.replace('/');
-  }, []);
-  return null;
-}
-
 function AppRoutes() {
   return (
     <Routes>
-      <Route path="/bypass" element={<BypassRoute />} />
       <Route path="/create" element={<CreateTournament />} />
       <Route path="/" element={<RootRoute />} />
       <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />

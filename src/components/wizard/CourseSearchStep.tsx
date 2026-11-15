@@ -80,10 +80,13 @@ export function CourseSearchStep({ value, onChange }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Sync query when parent resets the form (e.g. openAddCourse clears value.name)
-  useEffect(() => {
+  // Sync query when parent resets the form (e.g. openAddCourse clears value.name).
+  // Adjusting state during render avoids an extra effect-driven render.
+  const [syncedName, setSyncedName] = useState(value.name);
+  if (syncedName !== value.name) {
+    setSyncedName(value.name);
     setQuery(value.name);
-  }, [value.name]);
+  }
 
   // Close dropdown on outside click
   useEffect(() => {

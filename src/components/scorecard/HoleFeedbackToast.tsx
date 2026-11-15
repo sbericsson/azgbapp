@@ -25,19 +25,23 @@ export function HoleFeedbackToast({ message, loading = false, autoDismiss = true
 
   if (!isOpen) return null;
 
+  // Sits above the bottom action bar and can be dismissed at any time, including
+  // while AI commentary is still loading, so it never blocks score entry (B11).
   return (
-    <div
-      className="fixed inset-x-0 bottom-0 z-40"
-      onClick={loading ? undefined : onDismiss}
-    >
-      <div className="bg-gray-900 min-h-[55vh] flex flex-col items-center justify-center px-8 py-10 rounded-t-3xl shadow-2xl border-t border-gray-700">
+    <div className="fixed inset-x-0 bottom-[6.5rem] z-40 px-3 pointer-events-none">
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Dismiss commentary"
+        className="pointer-events-auto w-full max-w-lg mx-auto bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center px-6 py-6 rounded-2xl shadow-2xl border border-gray-700 text-center"
+      >
         {loading && !message ? (
-          <p className="text-white text-4xl font-bold text-center animate-pulse">· · ·</p>
+          <p className="text-white text-3xl font-bold animate-pulse" aria-live="polite">· · ·</p>
         ) : (
-          <p className="text-white text-3xl font-bold text-center leading-snug">{message}</p>
+          <p className="text-white text-xl font-bold leading-snug" aria-live="polite">{message}</p>
         )}
-        {!loading && <p className="text-gray-500 text-sm mt-8">Tap to dismiss</p>}
-      </div>
+        <p className="text-gray-500 text-xs mt-4">Tap to dismiss</p>
+      </button>
     </div>
   );
 }

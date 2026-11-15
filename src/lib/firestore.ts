@@ -6,6 +6,8 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
+  writeBatch,
   query,
   where,
   onSnapshot,
@@ -15,6 +17,28 @@ import { db } from '../firebase';
 import { tournamentCodeCandidates } from './tournamentCode';
 import type { Tournament, Group, Golfer, Course, Round, AppConfig } from '../types/tournament';
 import type { GroupScoreDoc, HoleScore } from '../types/scoring';
+import type { DocumentReference, UpdateData, DocumentData } from 'firebase/firestore';
+
+/**
+ * Firestore rejects `undefined` field values. In a partial update, `undefined`
+ * means "clear this field", so translate it to deleteField() (B5).
+ */
+function toUpdate<T extends object>(data: T): UpdateData<DocumentData> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = v === undefined ? deleteField() : v;
+  }
+  return out as UpdateData<DocumentData>;
+}
+
+/** Delete many documents in batches of at most 450 writes. */
+async function deleteRefs(refs: DocumentReference[]): Promise<void> {
+  for (let i = 0; i < refs.length; i += 450) {
+    const batch = writeBatch(db);
+    refs.slice(i, i + 450).forEach((r) => batch.delete(r));
+    await batch.commit();
+  }
+}
 
 // ── Tournaments ────────────────────────────────────────────────────────────────
 
@@ -34,7 +58,8 @@ export async function getTournament(id: string): Promise<Tournament | null> {
 export async function findTournamentByCode(code: string): Promise<Tournament | null> {
   for (const candidate of tournamentCodeCandidates(code)) {
     const tournament = await getTournament(candidate);
-    if (tournament) return tournament;
+    // Archived tournaments cannot be logged into by code
+    if (tournament && !tournament.archivedAt) return tournament;
   }
   return null;
 }
@@ -44,15 +69,40 @@ export async function listTournaments(): Promise<Tournament[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tournament);
 }
 
+/**
+ * Permanently delete a tournament and everything under it (rounds and their
+ * scores, groups, golfers, courses). Firestore does not cascade on its own.
+ */
 export async function deleteTournament(id: string): Promise<void> {
-  await deleteDoc(doc(db, 'tournaments', id));
+  const [rounds, groups, golfers, courses] = await Promise.all([
+    getDocs(collection(db, 'tournaments', id, 'rounds')),
+    getDocs(collection(db, 'tournaments', id, 'groups')),
+    getDocs(collection(db, 'tournaments', id, 'golfers')),
+    getDocs(collection(db, 'tournaments', id, 'courses')),
+  ]);
+  const scoreSnaps = await Promise.all(
+    rounds.docs.map((r) => getDocs(collection(r.ref, 'scores'))),
+  );
+  await deleteRefs([
+    ...scoreSnaps.flatMap((s) => s.docs.map((d) => d.ref)),
+    ...rounds.docs.map((d) => d.ref),
+    ...groups.docs.map((d) => d.ref),
+    ...golfers.docs.map((d) => d.ref),
+    ...courses.docs.map((d) => d.ref),
+    doc(db, 'tournaments', id),
+  ]);
+}
+
+/** Archive hides a tournament and blocks code login; data is kept and can be restored. */
+export async function setTournamentArchived(id: string, archived: boolean): Promise<void> {
+  await updateDoc(doc(db, 'tournaments', id), toUpdate({ archivedAt: archived ? Date.now() : undefined }));
 }
 
 export async function updateTournament(
   id: string,
   data: Partial<Omit<Tournament, 'id'>>,
 ): Promise<void> {
-  await updateDoc(doc(db, 'tournaments', id), data);
+  await updateDoc(doc(db, 'tournaments', id), toUpdate(data));
 }
 
 // ── App Config ─────────────────────────────────────────────────────────────────
@@ -93,7 +143,7 @@ export async function updateCourse(
   courseId: string,
   data: Partial<Omit<Course, 'id'>>,
 ): Promise<void> {
-  await updateDoc(doc(db, 'tournaments', tournamentId, 'courses', courseId), data);
+  await updateDoc(doc(db, 'tournaments', tournamentId, 'courses', courseId), toUpdate(data));
 }
 
 export async function deleteCourse(
@@ -193,7 +243,7 @@ export async function updateGroup(
   groupId: string,
   data: Partial<Omit<Group, 'id'>>,
 ): Promise<void> {
-  await updateDoc(doc(db, 'tournaments', tournamentId, 'groups', groupId), data);
+  await updateDoc(doc(db, 'tournaments', tournamentId, 'groups', groupId), toUpdate(data));
 }
 
 export async function deleteGroup(
@@ -204,6 +254,19 @@ export async function deleteGroup(
 }
 
 // ── Rounds ─────────────────────────────────────────────────────────────────────
+
+const LEGACY_DAYS: Record<string, Round['day']> = {
+  saturday_am: 'saturday',
+  saturday_pm: 'saturday',
+  sunday_am: 'sunday',
+  sunday_pm: 'sunday',
+};
+
+/** Map a round document to a Round, translating legacy day values (B17). */
+function toRound(id: string, data: Record<string, unknown>): Round {
+  const day = String(data.day ?? '');
+  return { id, ...data, day: LEGACY_DAYS[day] ?? day } as Round;
+}
 
 export function roundsRef(tournamentId: string) {
   return collection(db, 'tournaments', tournamentId, 'rounds');
@@ -219,7 +282,34 @@ export async function createRound(
 
 export async function listRounds(tournamentId: string): Promise<Round[]> {
   const snap = await getDocs(roundsRef(tournamentId));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Round);
+  return snap.docs.map((d) => toRound(d.id, d.data()));
+}
+
+export function subscribeRounds(
+  tournamentId: string,
+  callback: (rounds: Round[]) => void,
+  onError?: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    roundsRef(tournamentId),
+    (snap) => callback(snap.docs.map((d) => toRound(d.id, d.data()))),
+    (err) => {
+      console.error('subscribeRounds error', err);
+      onError?.(err);
+    },
+  );
+}
+
+export function subscribeRound(
+  tournamentId: string,
+  roundId: string,
+  callback: (round: Round | null) => void,
+): Unsubscribe {
+  return onSnapshot(
+    doc(db, 'tournaments', tournamentId, 'rounds', roundId),
+    (snap) => callback(snap.exists() ? toRound(snap.id, snap.data()) : null),
+    (err) => console.error('subscribeRound error', err),
+  );
 }
 
 export async function updateRound(
@@ -229,15 +319,36 @@ export async function updateRound(
 ): Promise<void> {
   await updateDoc(
     doc(db, 'tournaments', tournamentId, 'rounds', roundId),
-    data,
+    toUpdate(data),
   );
 }
 
+/** Delete a round together with its groups (pairings and PINs) and scores (B6). */
 export async function deleteRound(
   tournamentId: string,
   roundId: string,
 ): Promise<void> {
-  await deleteDoc(doc(db, 'tournaments', tournamentId, 'rounds', roundId));
+  const [groups, scores] = await Promise.all([
+    getDocs(query(groupsRef(tournamentId), where('roundId', '==', roundId))),
+    getDocs(scoresCollectionRef(tournamentId, roundId)),
+  ]);
+  await deleteRefs([
+    ...scores.docs.map((d) => d.ref),
+    ...groups.docs.map((d) => d.ref),
+    doc(db, 'tournaments', tournamentId, 'rounds', roundId),
+  ]);
+}
+
+/** Delete one group and its score document for the round. */
+export async function deleteGroupWithScores(
+  tournamentId: string,
+  roundId: string,
+  groupId: string,
+): Promise<void> {
+  await deleteRefs([
+    scoreDocRef(tournamentId, roundId, groupId),
+    doc(db, 'tournaments', tournamentId, 'groups', groupId),
+  ]);
 }
 
 // ── Scores ─────────────────────────────────────────────────────────────────────
@@ -269,13 +380,19 @@ export function scoresCollectionRef(tournamentId: string, roundId: string) {
   );
 }
 
-export async function saveGroupScores(
+/**
+ * Write a group's holes. Resolves when the server acknowledges the write,
+ * which never happens while offline: callers should not block the UI on it.
+ * The write is applied to the local cache (and visible to snapshot listeners)
+ * immediately, and queued for sync.
+ */
+export function saveGroupScores(
   tournamentId: string,
   roundId: string,
   groupId: string,
   holes: HoleScore[],
 ): Promise<void> {
-  await setDoc(
+  return setDoc(
     scoreDocRef(tournamentId, roundId, groupId),
     { groupId, updatedAt: Date.now(), holes },
     { merge: true },
@@ -286,16 +403,21 @@ export function subscribeGroupScores(
   tournamentId: string,
   roundId: string,
   groupId: string,
-  callback: (doc: GroupScoreDoc | null) => void,
+  callback: (doc: GroupScoreDoc | null, meta: { hasPendingWrites: boolean; fromCache: boolean }) => void,
 ): Unsubscribe {
   return onSnapshot(
     scoreDocRef(tournamentId, roundId, groupId),
+    { includeMetadataChanges: true },
     (snap) => {
+      const meta = {
+        hasPendingWrites: snap.metadata.hasPendingWrites,
+        fromCache: snap.metadata.fromCache,
+      };
       if (!snap.exists()) {
-        callback(null);
+        callback(null, meta);
         return;
       }
-      callback(snap.data() as GroupScoreDoc);
+      callback(snap.data() as GroupScoreDoc, meta);
     },
     (err) => console.error('subscribeGroupScores error', err),
   );
@@ -314,7 +436,7 @@ export async function clearRoundScores(
   roundId: string,
 ): Promise<void> {
   const snap = await getDocs(scoresCollectionRef(tournamentId, roundId));
-  await Promise.all(snap.docs.map((d) => deleteDoc(d.ref)));
+  await deleteRefs(snap.docs.map((d) => d.ref));
 }
 
 export function subscribeAllScores(

@@ -15,7 +15,7 @@ export function HoleNav({ currentHole, totalHoles, lockedHoles, onHoleChange }: 
   }, [currentHole]);
 
   return (
-    <div className="flex gap-1 overflow-x-auto pb-1 px-2 scrollbar-hide">
+    <div data-no-swipe className="flex gap-1 overflow-x-auto pb-1 px-2 scrollbar-hide">
       {Array.from({ length: totalHoles }, (_, i) => {
         const isLocked = lockedHoles[i];
         const isCurrent = i === currentHole;

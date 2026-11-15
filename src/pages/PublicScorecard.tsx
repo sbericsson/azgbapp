@@ -5,7 +5,8 @@ import { getGroupById, listRounds } from '../lib/firestore';
 import { useGroup } from '../hooks/useGroup';
 import type { Round, Group } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
-import { isWolfHole, totalWolfPoints } from '../lib/scoring/wolf';
+import { isWolfHole } from '../lib/scoring/wolf';
+import { deriveWolfHoles, playerToPar, teamToPar, wolfPlayerTotals } from '../lib/scoring/standings';
 import { isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
 import { isGauntletHole } from '../lib/scoring/gauntlet';
@@ -33,17 +34,16 @@ export function PublicScorecard() {
   }, [roundId, groupId, tournamentId]);
 
   const players = group?.players ?? [];
-  const { holes, loading } = useGroup(tournamentId, round, groupId ?? null, players);
+  const { holes: rawHoles, loading } = useGroup(tournamentId, round, groupId ?? null, players);
 
-  const wolfHoles = round?.format === 'wolf'
-    ? (holes as WolfHoleScore[]).filter((h) => h.locked)
+  // Wolf carry and points are derived from inputs so corrections propagate.
+  const holes = round?.format === 'wolf' && rawHoles.every(isWolfHole)
+    ? deriveWolfHoles(rawHoles as WolfHoleScore[], players)
+    : rawHoles;
+
+  const runningPoints = round?.format === 'wolf'
+    ? wolfPlayerTotals(holes as WolfHoleScore[], players)
     : [];
-
-  const runningPoints = players.map((p) => ({
-    playerId: p.id,
-    name: p.name,
-    pts: totalWolfPoints(wolfHoles, p.id),
-  }));
 
   const lockedHoles = holes.filter((h) => h.locked);
 
@@ -175,11 +175,7 @@ export function PublicScorecard() {
           <div className="bg-gray-800 rounded-xl p-4">
             <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Round Totals</p>
             {players.map((p) => {
-              const total = (holes as BestBallHoleScore[]).reduce((sum, h, i) => {
-                if (!h.locked) return sum;
-                const s = h.scores.find((sc) => sc.playerId === p.id);
-                return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
-              }, 0);
+              const total = playerToPar(holes, round.par, p.id);
               return (
                 <div key={p.id} className="flex justify-between py-1">
                   <span className="text-gray-300 text-sm">{p.name}</span>
@@ -193,11 +189,7 @@ export function PublicScorecard() {
         )}
 
         {round.status === 'complete' && (round.format === 'scramble' || round.format === 'gauntlet') && lockedHoles.length > 0 && (() => {
-          const total = holes.reduce((sum, h, i) => {
-            if (!h.locked) return sum;
-            const score = (h as ScrambleHoleScore | GauntletHoleScore).teamScore;
-            return score !== null ? sum + (score - (round.par[i] ?? 4)) : sum;
-          }, 0);
+          const total = teamToPar(holes, round.par);
           return (
             <div className="bg-gray-800 rounded-xl p-4">
               <p className="text-gray-400 text-xs uppercase tracking-wider mb-3">Round Total</p>

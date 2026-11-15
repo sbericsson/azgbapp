@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { useGroup } from '../hooks/useGroup';
 import { useLeaderboard } from '../hooks/useLeaderboard';
-import { listRounds, getCourse, subscribeGroupsByRound } from '../lib/firestore';
+import { subscribeRound, getCourse, subscribeGroupsByRound } from '../lib/firestore';
 import type { Round, Group } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore, HoleScore } from '../types/scoring';
 import { HoleHeader } from '../components/scorecard/HoleHeader';
@@ -13,12 +13,14 @@ import { WolfHoleResult } from '../components/scorecard/WolfHoleResult';
 import { BestBallRow } from '../components/scorecard/BestBallRow';
 import { ScrambleInput } from '../components/scorecard/ScrambleInput';
 import { HoleFeedbackToast } from '../components/scorecard/HoleFeedbackToast';
+import { withComputedPoints, isWolfHole } from '../lib/scoring/wolf';
 import {
-  withComputedPoints,
-  isWolfHole,
-  computeCarryForHole,
-  totalWolfPoints,
-} from '../lib/scoring/wolf';
+  deriveWolfHoles,
+  wolfPlayerTotals,
+  playerToPar,
+  teamToPar,
+  lockedCount,
+} from '../lib/scoring/standings';
 import { computeBestScore, isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
 import { isGauntletHole, getAltShotTeeOffIndex } from '../lib/scoring/gauntlet';
@@ -33,6 +35,7 @@ export function Scorecard() {
   const { group, updateGroupName, tournamentId } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
+  const [roundLoaded, setRoundLoaded] = useState(false);
   const [courseName, setCourseName] = useState<string | undefined>();
   const [currentHole, setCurrentHole] = useState(0);
   const [showLockConfirm, setShowLockConfirm] = useState(false);
@@ -44,26 +47,50 @@ export function Scorecard() {
   const [feedbackAutoDismiss, setFeedbackAutoDismiss] = useState(true);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
   const feedbackHistoryRef = useRef<string[]>([]);
+  // Guards against a double tap on "Lock It" (B8) and tracks the pending auto-advance
+  const lockingRef = useRef(false);
+  const advanceTimerRef = useRef<number | null>(null);
 
   const players = group?.players ?? [];
   const hasJumpedToCurrentHole = useRef(false);
-  const { holes, loading, saving, saveError, saveHole, setLocalHole } = useGroup(
+  const { holes, loading, pendingSync, saveError, saveHole, setLocalHole } = useGroup(
     tournamentId,
     round,
     group?.id ?? null,
     players,
   );
 
+  // Live round subscription so status changes (e.g. complete) reach the phone (B13)
   useEffect(() => {
     if (!roundId || !tournamentId) return;
-    listRounds(tournamentId).then((all) => {
-      const r = all.find((r) => r.id === roundId) ?? null;
-      setRound(r);
-      if (r?.courseId) {
-        getCourse(tournamentId, r.courseId).then((c) => setCourseName(c?.name));
-      }
+    return subscribeRound(tournamentId, roundId, (r) => {
+      setRound((prev) => {
+        // Keep the same object when nothing relevant changed so useGroup does not resubscribe
+        if (prev && r && JSON.stringify(prev) === JSON.stringify(r)) return prev;
+        return r;
+      });
+      setRoundLoaded(true);
     });
   }, [roundId, tournamentId]);
+
+  const courseId = round?.courseId;
+  useEffect(() => {
+    if (!tournamentId || !courseId) return;
+    getCourse(tournamentId, courseId).then((c) => setCourseName(c?.name)).catch(() => {});
+  }, [tournamentId, courseId]);
+
+  // Cancel a pending auto-advance on unmount
+  useEffect(() => () => {
+    if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
+  }, []);
+
+  const goToHole = (i: number) => {
+    if (advanceTimerRef.current !== null) {
+      window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = null;
+    }
+    setCurrentHole(i);
+  };
 
   // On first load, jump to the first unlocked hole so returning players land on their active hole
   useEffect(() => {
@@ -95,15 +122,30 @@ export function Scorecard() {
 
   const leaderboardRound = round?.format !== 'wolf' ? round : null;
   const { entries: lbEntries } = useLeaderboard(tournamentId, leaderboardRound, allGroups);
-  // Swipe to navigate holes
+  // Swipe to navigate holes. Ignores mostly-vertical gestures and swipes that
+  // start inside the hole strip (which scrolls horizontally on its own) (B16).
   useEffect(() => {
     let startX = 0;
-    const onTouchStart = (e: TouchEvent) => { startX = e.touches[0].clientX; };
+    let startY = 0;
+    let ignore = false;
+    const onTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      ignore = e.target instanceof Element && e.target.closest('[data-no-swipe]') !== null;
+    };
     const onTouchEnd = (e: TouchEvent) => {
+      if (ignore) return;
       const dx = e.changedTouches[0].clientX - startX;
-      if (Math.abs(dx) < 50) return;
-      if (dx < 0 && currentHole < (round?.holes ?? 18) - 1) setCurrentHole((h) => h + 1);
-      if (dx > 0 && currentHole > 0) setCurrentHole((h) => h - 1);
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      const clear = () => {
+        if (advanceTimerRef.current !== null) {
+          window.clearTimeout(advanceTimerRef.current);
+          advanceTimerRef.current = null;
+        }
+      };
+      if (dx < 0 && currentHole < (round?.holes ?? 18) - 1) { clear(); setCurrentHole((h) => h + 1); }
+      if (dx > 0 && currentHole > 0) { clear(); setCurrentHole((h) => h - 1); }
     };
     window.addEventListener('touchstart', onTouchStart);
     window.addEventListener('touchend', onTouchEnd);
@@ -116,7 +158,7 @@ export function Scorecard() {
   if (!group || !round) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400">{loading ? 'Loading…' : 'Round not found'}</p>
+        <p className="text-gray-400">{loading || !roundLoaded ? 'Loading…' : 'Round not found'}</p>
       </div>
     );
   }
@@ -134,59 +176,31 @@ export function Scorecard() {
     (hole as WolfHoleScore).partnerId === null
   );
 
-  // Wolf carry + running points
-  const wolfHoles = round.format === 'wolf' ? (holes as WolfHoleScore[]) : [];
-  const currentCarry = round.format === 'wolf' ? computeCarryForHole(wolfHoles, currentHole) : 0;
+  // Wolf carry and points are derived from the stored inputs for the whole
+  // round, so unlocking and correcting an earlier hole updates later ones (B3).
+  const derivedWolfHoles = round.format === 'wolf' && holes.every(isWolfHole)
+    ? deriveWolfHoles(holes as WolfHoleScore[], players)
+    : [];
+  const currentCarry = derivedWolfHoles[currentHole]?.carry ?? 0;
   const runningPoints = round.format === 'wolf'
+    ? wolfPlayerTotals(derivedWolfHoles, players).map(({ playerId, pts }) => ({ playerId, pts }))
+    : [];
+  const perPlayerToPar = (round.format === 'wolf' || round.format === 'bestBall')
     ? players.map((p) => ({
         playerId: p.id,
-        pts: totalWolfPoints(wolfHoles.filter((h) => h.locked), p.id),
+        relativeToPar: playerToPar(holes, round.par, p.id, currentHole),
       }))
     : [];
-  const runningRelativeToPar = round.format === 'wolf'
-    ? players.map((p) => ({
-        playerId: p.id,
-        relativeToPar: (holes as WolfHoleScore[]).reduce((sum, hole, i) => {
-          if (i > currentHole || !hole.locked) return sum;
-          const s = hole.scores.find((sc) => sc.playerId === p.id);
-          return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
-        }, 0),
-      }))
-    : [];
+  const runningRelativeToPar = round.format === 'wolf' ? perPlayerToPar : [];
+  const bestBallRunningRelativeToPar = round.format === 'bestBall' ? perPlayerToPar : [];
 
-  // Best ball cumulative running total per player through current hole
-  const bestBallRunningRelativeToPar = round.format === 'bestBall'
-    ? players.map((p) => ({
-        playerId: p.id,
-        relativeToPar: (holes as BestBallHoleScore[]).reduce((sum, hole, i) => {
-          if (i > currentHole || !hole.locked) return sum;
-          const s = hole.scores.find((sc) => sc.playerId === p.id);
-          return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
-        }, 0),
-      }))
-    : [];
-
-  // Scramble cumulative through current hole
-  const scrambleCumulative = round.format === 'scramble'
-    ? (holes as ScrambleHoleScore[]).reduce((sum, hole, i) => {
-        if (i > currentHole || !hole.locked || hole.teamScore === null) return sum;
-        return sum + (hole.teamScore - (round.par[i] ?? 4));
-      }, 0)
-    : null;
-  const scrambleHolesLocked = round.format === 'scramble'
-    ? (holes as ScrambleHoleScore[]).filter((h, i) => h.locked && i <= currentHole).length
-    : 0;
-
-  // Gauntlet cumulative running total through current hole
-  const gauntletCumulative = round.format === 'gauntlet'
-    ? (holes as GauntletHoleScore[]).reduce((sum, h, i) => {
-        if (i > currentHole || !h.locked || h.teamScore === null) return sum;
-        return sum + (h.teamScore - (round.par[i] ?? 4));
-      }, 0)
-    : null;
-  const gauntletHolesLocked = round.format === 'gauntlet'
-    ? holes.filter((h, i) => h.locked && i <= currentHole).length
-    : 0;
+  // Team running total through the current hole (scramble / gauntlet)
+  const teamCumulative = teamToPar(holes, round.par, currentHole);
+  const teamHolesLocked = lockedCount(holes, currentHole);
+  const scrambleCumulative = round.format === 'scramble' ? teamCumulative : null;
+  const scrambleHolesLocked = round.format === 'scramble' ? teamHolesLocked : 0;
+  const gauntletCumulative = round.format === 'gauntlet' ? teamCumulative : null;
+  const gauntletHolesLocked = round.format === 'gauntlet' ? teamHolesLocked : 0;
 
   function buildAIContext(
     locked: BestBallHoleScore | ScrambleHoleScore | GauntletHoleScore,
@@ -333,12 +347,17 @@ export function Scorecard() {
     };
   }
 
-  const handleLockHole = async () => {
-    if (!hole) return;
+  const handleLockHole = () => {
+    if (!hole || hole.locked || lockingRef.current) return;
     if (isWolfHole(hole)) {
       const w = hole as WolfHoleScore;
       if (w.loneWolfType === null && w.partnerId === null) return;
     }
+    lockingRef.current = true;
+    const lockedHoleIndex = currentHole;
+    // Close the confirmation immediately; the save is local-first and does not
+    // wait for the network (B1).
+    setShowLockConfirm(false);
     let locked = { ...hole, locked: true };
 
     if (isWolfHole(locked)) {
@@ -361,7 +380,7 @@ export function Scorecard() {
       if (g.teamScore === null) locked = { ...g, teamScore: par };
     }
 
-    await saveHole(currentHole, locked);
+    saveHole(lockedHoleIndex, locked);
 
     // Generate post-lock commentary
     if (isWolfHole(locked)) {
@@ -376,7 +395,7 @@ export function Scorecard() {
       setFeedbackMessage(null);
       const aiCtx = buildAIContext(
         locked as BestBallHoleScore | ScrambleHoleScore | GauntletHoleScore,
-        currentHole,
+        lockedHoleIndex,
         holes,
         lbEntries,
         activeGroup.name,
@@ -392,16 +411,20 @@ export function Scorecard() {
           setFeedbackLoading(false);
         });
     }
-    setShowLockConfirm(false);
-    // Delay auto-advance 1.5 s so users can read the toast
-    if (currentHole < round.holes - 1) {
-      setTimeout(() => setCurrentHole((h) => h + 1), 1500);
+    // Delay auto-advance 1.5 s so users can read the toast. Advance to the
+    // hole after the one just locked, and cancel if the golfer navigates first.
+    if (lockedHoleIndex < round.holes - 1) {
+      if (advanceTimerRef.current !== null) window.clearTimeout(advanceTimerRef.current);
+      advanceTimerRef.current = window.setTimeout(() => {
+        advanceTimerRef.current = null;
+        setCurrentHole(lockedHoleIndex + 1);
+      }, 1500);
     }
   };
 
-  const handleUnlockHole = async () => {
+  const handleUnlockHole = () => {
     if (!hole) return;
-    await saveHole(currentHole, { ...hole, locked: false });
+    saveHole(currentHole, { ...hole, locked: false });
   };
 
   const handleWolfChange = (updated: WolfHoleScore) => {
@@ -436,19 +459,20 @@ export function Scorecard() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Offline banner */}
-      {!online && (
-        <div className="bg-yellow-900 text-yellow-200 text-xs text-center py-2 px-4">
-          Offline — scores will sync when you reconnect
+      {/* Sync status */}
+      {saveError ? (
+        <div className="bg-red-900 text-red-200 text-xs text-center py-2 px-4" role="alert">
+          Save rejected by the server. Unlock and lock the hole again, or ask the organiser.
         </div>
-      )}
-
-      {/* Save error banner */}
-      {saveError && (
-        <div className="bg-red-900 text-red-200 text-xs text-center py-2 px-4">
-          Save failed — check connection and try locking again
+      ) : !online ? (
+        <div className="bg-yellow-900 text-yellow-200 text-xs text-center py-2 px-4" role="status">
+          Offline. Scores are saved on this phone and will sync when you reconnect.
         </div>
-      )}
+      ) : pendingSync ? (
+        <div className="bg-gray-800 text-gray-300 text-xs text-center py-1.5 px-4" role="status">
+          Saved on this phone · syncing…
+        </div>
+      ) : null}
 
       <HoleHeader
         holeNumber={currentHole + 1}
@@ -466,7 +490,7 @@ export function Scorecard() {
         currentHole={currentHole}
         totalHoles={round.holes}
         lockedHoles={lockedHoles}
-        onHoleChange={setCurrentHole}
+        onHoleChange={goToHole}
       />
 
       <div className="flex-1 overflow-y-auto p-4">
@@ -498,7 +522,9 @@ export function Scorecard() {
               runningRelativeToPar={runningRelativeToPar}
               onChange={handleWolfChange}
             />
-            {hole.locked && <div className="mt-3"><WolfHoleResult hole={hole as WolfHoleScore} players={players} /></div>}
+            {hole.locked && derivedWolfHoles[currentHole] && (
+              <div className="mt-3"><WolfHoleResult hole={derivedWolfHoles[currentHole]} players={players} /></div>
+            )}
           </>
         )}
 
@@ -576,11 +602,10 @@ export function Scorecard() {
         ) : !hole?.locked ? (
           canLock ? (
             <button
-              onClick={() => setShowLockConfirm(true)}
-              disabled={saving}
+              onClick={() => { lockingRef.current = false; setShowLockConfirm(true); }}
               className="h-14 px-6 rounded-xl bg-green-600 text-white font-bold disabled:opacity-40 flex items-center justify-center"
             >
-              {saving ? 'Saving…' : 'Save & Lock 🔒'}
+              Save & Lock 🔒
             </button>
           ) : (
             <div className="h-14 px-6 rounded-xl bg-green-600/40 text-white/40 font-bold flex items-center justify-center">

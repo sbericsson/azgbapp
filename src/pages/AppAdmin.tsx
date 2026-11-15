@@ -1,13 +1,14 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import {
   listTournaments,
   createTournament,
-  deleteTournament,
+  setTournamentArchived,
   getTournament,
 } from '../lib/firestore';
 import type { Tournament } from '../types/tournament';
+import { importTournament, parseBackup } from '../lib/backup';
 
 function fmtDate(ts: number): string {
   return new Date(ts).toLocaleDateString('en-US', {
@@ -35,6 +36,9 @@ export function AppAdmin() {
   // Archive confirmation
   const [pendingArchive, setPendingArchive] = useState<Tournament | null>(null);
   const [archiving, setArchiving] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState('');
+  const restoreInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     listTournaments()
@@ -51,8 +55,9 @@ export function AppAdmin() {
       setCreateError('All fields are required.');
       return;
     }
-    if (!/^\d{4,}$/.test(pin)) {
-      setCreateError('Admin PIN must be 4 or more digits.');
+    // The login keypad takes exactly 4 digits (B14)
+    if (!/^\d{4}$/.test(pin)) {
+      setCreateError('Admin PIN must be exactly 4 digits.');
       return;
     }
 
@@ -80,13 +85,41 @@ export function AppAdmin() {
     if (!pendingArchive) return;
     setArchiving(true);
     try {
-      await deleteTournament(pendingArchive.id);
-      setTournaments((prev) => prev.filter((t) => t.id !== pendingArchive.id));
+      await setTournamentArchived(pendingArchive.id, true);
+      const archivedAt = Date.now();
+      setTournaments((prev) => prev.map((t) => (t.id === pendingArchive.id ? { ...t, archivedAt } : t)));
       setPendingArchive(null);
     } finally {
       setArchiving(false);
     }
   };
+
+  const handleRestore = async (t: Tournament) => {
+    await setTournamentArchived(t.id, false);
+    setTournaments((prev) => prev.map((x) => (x.id === t.id ? { ...x, archivedAt: undefined } : x)));
+  };
+
+  const handleRestoreFile = async (file: File) => {
+    setRestoreMsg('');
+    try {
+      const backup = parseBackup(JSON.parse(await file.text()));
+      const target = window.prompt(
+        'Restore into which tournament code? It must not already exist.',
+        backup.tournamentId,
+      );
+      if (!target) return;
+      const code = target.trim().toLowerCase();
+      await importTournament(backup, code);
+      const restored = await getTournament(code);
+      if (restored) setTournaments((prev) => [restored, ...prev.filter((t) => t.id !== code)]);
+      setRestoreMsg(`Restored "${String(backup.tournament.name ?? code)}" as ${code}.`);
+    } catch (err) {
+      setRestoreMsg(err instanceof Error ? err.message : 'Restore failed.');
+    }
+  };
+
+  const activeTournaments = tournaments.filter((t) => !t.archivedAt);
+  const archivedTournaments = tournaments.filter((t) => t.archivedAt);
 
   const handleEnterAdmin = async (t: Tournament) => {
     await enterTournamentAsAdmin(t.id);
@@ -114,6 +147,25 @@ export function AppAdmin() {
         >
           {showCreate ? 'Cancel' : '+ New Tournament'}
         </button>
+
+        <button
+          onClick={() => restoreInputRef.current?.click()}
+          className="w-full py-2.5 rounded-xl bg-gray-800 text-gray-300 text-sm active:bg-gray-700"
+        >
+          Restore from backup…
+        </button>
+        <input
+          ref={restoreInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleRestoreFile(file);
+            e.target.value = '';
+          }}
+        />
+        {restoreMsg && <p className="text-xs text-gray-400 text-center">{restoreMsg}</p>}
 
         {/* Create form */}
         {showCreate && (
@@ -156,9 +208,10 @@ export function AppAdmin() {
                 className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm
                            border border-gray-700 focus:border-green-500 focus:outline-none
                            tracking-widest"
-                placeholder="4+ digits"
+                placeholder="4 digits"
+                maxLength={4}
                 value={newAdminPin}
-                onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
               />
             </div>
             {createError && (
@@ -178,11 +231,11 @@ export function AppAdmin() {
         {/* Tournament list */}
         {loadingList ? (
           <p className="text-center text-gray-500 text-sm py-8">Loading…</p>
-        ) : tournaments.length === 0 ? (
+        ) : activeTournaments.length === 0 ? (
           <p className="text-center text-gray-500 text-sm py-8">No tournaments yet.</p>
         ) : (
           <div className="space-y-3">
-            {tournaments.map((t) => (
+            {activeTournaments.map((t) => (
               <div
                 key={t.id}
                 className="bg-gray-900 rounded-2xl p-4 border border-gray-800"
@@ -217,6 +270,35 @@ export function AppAdmin() {
             ))}
           </div>
         )}
+
+        {archivedTournaments.length > 0 && (
+          <div className="pt-2">
+            <button
+              onClick={() => setShowArchived((v) => !v)}
+              className="text-xs text-gray-500 active:text-gray-300"
+            >
+              {showArchived ? 'Hide' : 'Show'} archived ({archivedTournaments.length})
+            </button>
+            {showArchived && (
+              <div className="space-y-2 mt-3">
+                {archivedTournaments.map((t) => (
+                  <div key={t.id} className="bg-gray-900/60 rounded-xl px-4 py-3 border border-gray-800 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-gray-300 text-sm truncate">{t.name}</p>
+                      <p className="text-xs text-gray-600 font-mono">{t.id}</p>
+                    </div>
+                    <button
+                      onClick={() => handleRestore(t)}
+                      className="px-3 py-1.5 rounded-lg bg-gray-800 text-gray-300 text-xs active:bg-gray-700"
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Archive confirmation modal */}
@@ -230,7 +312,7 @@ export function AppAdmin() {
               <span className="font-mono text-gray-300">{pendingArchive.id}</span>.
             </p>
             <p className="text-gray-600 text-xs mb-5">
-              Score data remains in Firestore but will be inaccessible through the app.
+              Nothing is deleted. You can restore it from the archived list.
             </p>
             <div className="flex gap-3">
               <button

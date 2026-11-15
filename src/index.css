@@ -19,3 +19,9 @@ html, body {
 #root {
   min-height: 100dvh;
 }
+
+/* Pinch zoom is allowed (accessibility); stop double-tap zoom on controls
+   so rapid taps on score steppers register as taps */
+button, a, input, select, [role="button"] {
+  touch-action: manipulation;
+}

@@ -37,7 +37,9 @@ interface AuthContextValue extends AuthState {
 
 const SESSION_KEY = 'azgb_session';
 
-const SESSION_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// Sliding expiry: the session lasts this long after the app was last used,
+// so a reload late in a long round does not drop golfers to the login screen (B12).
+const SESSION_TTL_MS = 16 * 60 * 60 * 1000; // 16 hours since last use
 
 interface StoredSession {
   tournamentId: string | null;
@@ -73,6 +75,28 @@ function readStoredSession(): StoredSession | null {
   }
 }
 
+/** Extend the session's expiry because the app is in use. */
+function touchStoredSession(): void {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    const session = JSON.parse(raw) as StoredSession;
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, loginAt: Date.now() }));
+  } catch {
+    // Storage unavailable; nothing to extend
+  }
+}
+
+/** Distinguish "does not exist" (null) from "could not check" (thrown). */
+async function fetchOrError<T>(fn: () => Promise<T | null>): Promise<{ value: T | null; failed: boolean }> {
+  try {
+    return { value: await fn(), failed: false };
+  } catch (err) {
+    console.error('session restore fetch failed', err);
+    return { value: null, failed: true };
+  }
+}
+
 export const AuthContext = createContext<AuthContextValue>({
   tournamentId: null,
   tournament: null,
@@ -99,12 +123,26 @@ export function useAuthProvider(): AuthContextValue {
     return session ? DEFAULT_AUTH_STATE : { ...DEFAULT_AUTH_STATE, loading: false };
   });
 
+  // Keep the session alive while the app is being used
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') touchStoredSession();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    const interval = window.setInterval(touchStoredSession, 10 * 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible);
+      window.clearInterval(interval);
+    };
+  }, []);
+
   // Restore session on mount
   useEffect(() => {
     const session = readStoredSession();
     if (!session) {
       return;
     }
+    touchStoredSession();
 
     (async () => {
       // App admin session
@@ -139,9 +177,12 @@ export function useAuthProvider(): AuthContextValue {
         setState({ ...DEFAULT_AUTH_STATE, loading: false });
         return;
       }
-      const tournament = await getTournament(session.tournamentId).catch(() => null);
+      const tournamentId = session.tournamentId;
+      const { value: tournament, failed } = await fetchOrError(() => getTournament(tournamentId));
       if (!tournament) {
-        localStorage.removeItem(SESSION_KEY);
+        // Only forget the session when the tournament is really gone; on a
+        // network error keep it so a reload with signal restores it (B12).
+        if (!failed) localStorage.removeItem(SESSION_KEY);
         setState({ ...DEFAULT_AUTH_STATE, loading: false });
         return;
       }
@@ -157,7 +198,9 @@ export function useAuthProvider(): AuthContextValue {
         return;
       }
       if (session.groupId) {
-        const group = await getGroupById(session.tournamentId, session.groupId).catch(() => null);
+        const groupId = session.groupId;
+        const { value: group, failed: groupFailed } = await fetchOrError(() => getGroupById(tournamentId, groupId));
+        if (!group && !groupFailed) localStorage.removeItem(SESSION_KEY);
         setState({
           tournamentId: session.tournamentId,
           tournament,

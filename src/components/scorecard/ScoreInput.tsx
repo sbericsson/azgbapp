@@ -47,8 +47,13 @@ export function ScoreInput({ playerId, playerName, value, par, disabled, onChang
         >
           −
         </button>
-        <span className={`w-10 text-center text-2xl font-bold ${isDefault ? 'text-gray-500' : scoreColor(display, par)}`}>
-          {display}
+        {/* Unset scores show par in grey plus a "not set" label, so an
+            untouched score is not mistaken for an entered par (B23) */}
+        <span className="w-12 flex flex-col items-center leading-none">
+          <span className={`text-2xl font-bold ${isDefault ? 'text-gray-500' : scoreColor(display, par)}`}>
+            {display}
+          </span>
+          {isDefault && <span className="text-[10px] text-gray-500 mt-1">not set</span>}
         </span>
         <button
           onClick={increment}

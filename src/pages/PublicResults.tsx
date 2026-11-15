@@ -10,11 +10,12 @@ import {
 } from '../lib/firestore';
 import type { Unsubscribe } from 'firebase/firestore';
 import type { Group, Round, RoundFormat, Tournament } from '../types/tournament';
-import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
-import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
-import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
-import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
-import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
+import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
+import { isWolfHole } from '../lib/scoring/wolf';
+import { isBestBallHole } from '../lib/scoring/bestBall';
+import { isScrambleHole } from '../lib/scoring/scramble';
+import { isGauntletHole } from '../lib/scoring/gauntlet';
+import { computeStandings, formatRank, formatScore, type StandingEntry } from '../lib/scoring/standings';
 
 const DAY_ORDER: Record<string, number> = {
   monday: 0,
@@ -26,76 +27,13 @@ const DAY_ORDER: Record<string, number> = {
   sunday: 6,
 };
 
-function fmtScore(n: number, format: RoundFormat): string {
-  if (format === 'wolf') return `${n} pts`;
-  if (n === 0) return 'E';
-  return n > 0 ? `+${n}` : `${n}`;
-}
-
-interface RoundEntry {
-  group: Group;
-  score: number;
-  holesCompleted: number;
-  playerPoints?: { name: string; pts: number }[];
-  playerTotals?: { name: string; total: number }[];
-  scoreDoc?: GroupScoreDoc;
-}
+const fmtScore = formatScore;
+type RoundEntry = StandingEntry;
 
 interface RoundResult {
   round: Round;
   courseName?: string;
   entries: RoundEntry[];
-}
-
-function computeRoundEntries(
-  round: Round,
-  groups: Group[],
-  scoreDocs: GroupScoreDoc[],
-): RoundEntry[] {
-  return groups.map((group) => {
-    const scoreDoc = scoreDocs.find((d) => d.groupId === group.id);
-    if (!scoreDoc) return { group, score: 0, holesCompleted: 0 };
-
-    const lockedHoles = scoreDoc.holes.filter((h) => h.locked);
-    const holesCompleted = lockedHoles.length;
-
-    if (round.format === 'wolf') {
-      const wolfHoles = lockedHoles.filter(isWolfHole) as WolfHoleScore[];
-      const playerPoints = group.players.map((p) => ({
-        name: p.name,
-        pts: totalWolfPoints(wolfHoles, p.id),
-      }));
-      return {
-        group,
-        score: playerPoints.reduce((s, p) => s + p.pts, 0),
-        holesCompleted,
-        playerPoints,
-        scoreDoc,
-      };
-    }
-
-    if (round.format === 'bestBall') {
-      const bbHoles = lockedHoles.filter(isBestBallHole) as BestBallHoleScore[];
-      const teamScore = bestBallTotalToPar(bbHoles, round.par);
-      const playerTotals = group.players.map((p) => {
-        const total = (scoreDoc.holes as BestBallHoleScore[]).reduce((sum, h, i) => {
-          if (!h.locked) return sum;
-          const s = h.scores?.find((sc) => sc.playerId === p.id);
-          return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
-        }, 0);
-        return { name: p.name, total };
-      });
-      return { group, score: teamScore, holesCompleted, playerTotals, scoreDoc };
-    }
-
-    if (round.format === 'gauntlet') {
-      const gHoles = lockedHoles.filter(isGauntletHole) as GauntletHoleScore[];
-      return { group, score: gauntletTotalToPar(gHoles, round.par), holesCompleted, scoreDoc };
-    }
-
-    const sHoles = lockedHoles.filter(isScrambleHole) as ScrambleHoleScore[];
-    return { group, score: scrambleTotalToPar(sHoles, round.par), holesCompleted, scoreDoc };
-  });
 }
 
 function dayLabel(day: string) {
@@ -169,10 +107,7 @@ export function PublicResults() {
             listAllScores(tournamentId, round.id),
           ]);
           groupsByRoundRef.current[round.id] = groups;
-          const entries = computeRoundEntries(round, groups, scoreDocs);
-          const sortedEntries = [...entries].sort((a, b) =>
-            round.format === 'wolf' ? b.score - a.score : a.score - b.score,
-          );
+          const sortedEntries = computeStandings(round, groups, scoreDocs);
           return {
             round,
             courseName: round.courseId ? courseMap[round.courseId] : undefined,
@@ -195,10 +130,7 @@ export function PublicResults() {
         .forEach((round) => {
           const unsub = subscribeAllScores(tournamentId, round.id, (scoreDocs) => {
             const groups = groupsByRoundRef.current[round.id] ?? [];
-            const entries = computeRoundEntries(round, groups, scoreDocs);
-            const sortedEntries = [...entries].sort((a, b) =>
-              round.format === 'wolf' ? b.score - a.score : a.score - b.score,
-            );
+            const sortedEntries = computeStandings(round, groups, scoreDocs);
             setPageState((prev) =>
               prev.requestKey !== requestKey
                 ? prev
@@ -290,7 +222,7 @@ export function PublicResults() {
                   <p className="text-gray-500 text-sm px-4 py-3">No groups.</p>
                 ) : (
                   <div className="divide-y divide-gray-700">
-                    {entries.map((entry, rank) => {
+                    {entries.map((entry) => {
                       const playerLine = isWolf
                         ? (entry.playerPoints ?? []).map((pp) => `${pp.name}: ${pp.pts} pts`).join(' · ')
                         : isBestBallFmt
@@ -306,7 +238,7 @@ export function PublicResults() {
                           className={`w-full px-4 py-3 flex items-start justify-between gap-3 text-left ${hasScores ? 'active:bg-gray-700/50' : ''}`}
                         >
                           <div className="flex items-start gap-3 min-w-0">
-                            <span className="text-gray-500 text-sm w-5 shrink-0 mt-0.5">{rank + 1}</span>
+                            <span className="text-gray-500 text-sm w-6 shrink-0 mt-0.5">{formatRank(entry.rank, entry.tied)}</span>
                             <div className="min-w-0">
                               <p className={`font-medium text-sm ${hasScores ? 'text-white' : 'text-gray-400'}`}>{entry.group.name}</p>
                               {playerLine && (

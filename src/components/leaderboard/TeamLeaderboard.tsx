@@ -11,11 +11,10 @@ interface TeamLeaderboardProps {
 export function TeamLeaderboard({ entries, format, onGroupClick }: TeamLeaderboardProps) {
   return (
     <div className="flex flex-col gap-2">
-      {entries.map((entry, i) => (
+      {entries.map((entry) => (
         <LeaderboardRow
           key={entry.groupId}
           entry={entry}
-          rank={i + 1}
           format={format}
           onClick={onGroupClick ? () => onGroupClick(entry.groupId) : undefined}
         />

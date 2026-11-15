@@ -6,12 +6,8 @@ import {
   listGroupsByRound,
   listAllScores,
 } from '../lib/firestore';
-import type { Group, Round, RoundFormat } from '../types/tournament';
-import type { GroupScoreDoc, WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
-import { totalWolfPoints, isWolfHole } from '../lib/scoring/wolf';
-import { bestBallTotalToPar, isBestBallHole } from '../lib/scoring/bestBall';
-import { scrambleTotalToPar, isScrambleHole } from '../lib/scoring/scramble';
-import { gauntletTotalToPar, isGauntletHole } from '../lib/scoring/gauntlet';
+import type { Round, RoundFormat } from '../types/tournament';
+import { computeStandings, formatRank, formatScore, type StandingEntry } from '../lib/scoring/standings';
 
 const DAY_ORDER: Record<string, number> = {
   monday: 0,
@@ -23,76 +19,12 @@ const DAY_ORDER: Record<string, number> = {
   sunday: 6,
 };
 
-function fmtScore(n: number, format: RoundFormat): string {
-  if (format === 'wolf') return `${n} pts`;
-  if (n === 0) return 'E';
-  return n > 0 ? `+${n}` : `${n}`;
-}
-
-interface RoundEntry {
-  group: Group;
-  score: number;
-  holesCompleted: number;
-  playerPoints?: { name: string; pts: number }[];   // wolf
-  playerTotals?: { name: string; total: number }[];  // bestBall
-}
+const fmtScore = formatScore;
 
 interface RoundResult {
   round: Round;
   courseName?: string;
-  entries: RoundEntry[];
-}
-
-function computeRoundEntries(
-  round: Round,
-  groups: Group[],
-  scoreDocs: GroupScoreDoc[],
-): RoundEntry[] {
-  return groups.map((group) => {
-    const scoreDoc = scoreDocs.find((d) => d.groupId === group.id);
-    if (!scoreDoc) return { group, score: 0, holesCompleted: 0 };
-
-    const lockedHoles = scoreDoc.holes.filter((h) => h.locked);
-    const holesCompleted = lockedHoles.length;
-
-    if (round.format === 'wolf') {
-      const wolfHoles = lockedHoles.filter(isWolfHole) as WolfHoleScore[];
-      const playerPoints = group.players.map((p) => ({
-        name: p.name,
-        pts: totalWolfPoints(wolfHoles, p.id),
-      }));
-      return {
-        group,
-        score: playerPoints.reduce((s, p) => s + p.pts, 0),
-        holesCompleted,
-        playerPoints,
-      };
-    }
-
-    if (round.format === 'bestBall') {
-      const bbHoles = lockedHoles.filter(isBestBallHole) as BestBallHoleScore[];
-      const teamScore = bestBallTotalToPar(bbHoles, round.par);
-      // Per-player: iterate full holes array with original index for correct par lookup
-      const playerTotals = group.players.map((p) => {
-        const total = (scoreDoc.holes as BestBallHoleScore[]).reduce((sum, h, i) => {
-          if (!h.locked) return sum;
-          const s = h.scores?.find((sc) => sc.playerId === p.id);
-          return s && s.gross > 0 ? sum + (s.gross - (round.par[i] ?? 4)) : sum;
-        }, 0);
-        return { name: p.name, total };
-      });
-      return { group, score: teamScore, holesCompleted, playerTotals };
-    }
-
-    if (round.format === 'gauntlet') {
-      const gHoles = lockedHoles.filter(isGauntletHole) as GauntletHoleScore[];
-      return { group, score: gauntletTotalToPar(gHoles, round.par), holesCompleted };
-    }
-
-    // scramble
-    const sHoles = lockedHoles.filter(isScrambleHole) as ScrambleHoleScore[];
-    return { group, score: scrambleTotalToPar(sHoles, round.par), holesCompleted };
-  });
+  entries: StandingEntry[];
 }
 
 export function PrintResults() {
@@ -129,10 +61,7 @@ export function PrintResults() {
             listAllScores(tournamentId, round.id),
           ]);
 
-          const entries = computeRoundEntries(round, groups, scoreDocs);
-          const sortedEntries = [...entries].sort((a, b) =>
-            round.format === 'wolf' ? b.score - a.score : a.score - b.score,
-          );
+          const sortedEntries = computeStandings(round, groups, scoreDocs);
 
           return {
             round,
@@ -223,7 +152,7 @@ export function PrintResults() {
                     </tr>
                   </thead>
                   <tbody>
-                    {entries.map((entry, rank) => {
+                    {entries.map((entry) => {
                       const playerLine = isWolf
                         ? (entry.playerPoints ?? []).map((pp) => `${pp.name}: ${pp.pts} pts`).join(' · ')
                         : isBestBallFmt
@@ -235,7 +164,7 @@ export function PrintResults() {
                           key={entry.group.id}
                           className="border-b border-gray-800 print:border-gray-200"
                         >
-                          <td className="py-2 pr-2 text-gray-500 align-top">{rank + 1}</td>
+                          <td className="py-2 pr-2 text-gray-500 align-top">{formatRank(entry.rank, entry.tied)}</td>
                           <td className="py-2 align-top">
                             <span className="font-medium">{entry.group.name}</span>
                             {entry.holesCompleted > 0 && entry.holesCompleted < round.holes && (

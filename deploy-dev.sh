@@ -93,8 +93,8 @@ set -a
 # shellcheck source=/dev/null
 source "$DEV_ENV"
 set +a
-npm run build
-# dist/ is now at /var/www/azgb-dev/dist — nginx serves it directly
+# Builds into releases/ and swaps the dist/ symlink only on success
+bash scripts/build-release.sh
 
 echo ""
 echo "✓ Dev deploy complete — https://dev.golfbender.app"
