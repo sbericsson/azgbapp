@@ -87,6 +87,8 @@ echo "==> Installing dependencies…"
 npm ci --include=dev
 
 echo "==> Building for dev (azgb-dev Firebase project)…"
+# Clear any stale VITE_* vars from the shell environment before sourcing the dev env
+while IFS='=' read -r key _; do unset "$key"; done < <(printenv | grep '^VITE_')
 set -a
 # shellcheck source=/dev/null
 source "$DEV_ENV"

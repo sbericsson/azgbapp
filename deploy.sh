@@ -25,6 +25,8 @@ echo "==> Installing dependencies…"
 npm ci --include=dev
 
 echo "==> Building…"
+# Clear any VITE_* vars exported into the shell environment — they override .env files
+while IFS='=' read -r key _; do unset "$key"; done < <(printenv | grep '^VITE_')
 npm run build
 
 echo ""
