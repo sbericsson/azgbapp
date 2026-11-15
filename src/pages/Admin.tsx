@@ -4,17 +4,16 @@ import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
   createCourse, listCourses, updateCourse, deleteCourse,
-  createGroup, updateGroup, deleteGroupWithScores, listGroupsByRound, getGroupByPin,
+  createGroup, updateGroup, deleteGroupWithScores, listGroupsByRound, inviteScorer,
   createRound, listRounds, deleteRound, updateRound,
   listAllScores, clearRoundScores,
-} from '../lib/firestore';
+} from '../lib/data';
 import type { Golfer, Course, Group, Round, RoundFormat, Player } from '../types/tournament';
 import type { GroupScoreDoc } from '../types/scoring';
 import { DEFAULT_PAR } from '../constants/wolf';
 import { computeGroupStanding } from '../lib/scoring/standings';
 import { nanoid } from '../lib/nanoid';
-import { exportTournament, downloadJson } from '../lib/backup';
-import { randomPin } from '../lib/pin';
+import { exportTournament, downloadJson, getTournament, setTournamentAdmins } from '../lib/data';
 import { CourseSearchStep, type CourseSearchResult } from '../components/wizard/CourseSearchStep';
 
 interface GroupSummary {
@@ -87,12 +86,11 @@ function ParEditor({
 const REQUIRED_PLAYERS: Partial<Record<RoundFormat, number>> = { wolf: 4, gauntlet: 2 };
 
 /**
- * Validate a pairing before saving: 4-digit numeric PIN that is not the admin
- * PIN (B14) and a player count the format supports (B19).
+ * Validate a pairing before saving: an optional scorer email that looks like
+ * one (R13) and a player count the format supports (B19).
  */
-function validatePairing(pin: string, adminPin: string | undefined, format: RoundFormat | undefined, playerCount: number): string | null {
-  if (!/^\d{4}$/.test(pin)) return 'PIN must be exactly 4 digits.';
-  if (adminPin && pin === adminPin) return 'That PIN is the tournament admin PIN. Choose another.';
+function validatePairing(scorerEmail: string, format: RoundFormat | undefined, playerCount: number): string | null {
+  if (scorerEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(scorerEmail)) return 'That scorer email does not look right.';
   if (playerCount === 0) return 'Add at least one player.';
   const required = format ? REQUIRED_PLAYERS[format] : undefined;
   if (required && playerCount !== required) {
@@ -101,10 +99,76 @@ function validatePairing(pin: string, adminPin: string | undefined, format: Roun
   return null;
 }
 
+// ── Organisers ────────────────────────────────────────────────────────────────
+
+/** Emails that can manage this tournament. Each signs in with an emailed link. */
+function OrganisersEditor({ tournamentId, initial, me }: { tournamentId: string; initial: string[]; me: string | null }) {
+  const [admins, setAdmins] = useState<string[]>(initial);
+  const [adding, setAdding] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    getTournament(tournamentId).then((t) => { if (t?.admins) setAdmins(t.admins); }).catch(() => {});
+  }, [tournamentId]);
+
+  const save = async (next: string[]) => {
+    setSaving(true);
+    setError('');
+    try {
+      setAdmins(await setTournamentAdmins(tournamentId, next));
+      setAdding('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5 border-t border-gray-700 pt-3">
+      <label className="text-gray-400 text-xs font-medium">Organisers</label>
+      <p className="text-gray-500 text-xs">These people can manage the tournament. They sign in with their email.</p>
+      {admins.map((a) => (
+        <div key={a} className="flex items-center justify-between bg-gray-700 rounded-lg px-3 py-2 text-sm">
+          <span className="truncate">{a}{a === me ? ' (you)' : ''}</span>
+          {a !== me && (
+            <button
+              onClick={() => { if (window.confirm(`Remove ${a} as an organiser?`)) void save(admins.filter((x) => x !== a)); }}
+              disabled={saving}
+              className="text-red-400 text-xs ml-2"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <input
+          type="email"
+          className="flex-1 min-w-0 bg-gray-700 rounded-xl px-3 py-2 text-white placeholder-gray-500 text-sm"
+          placeholder="co-organiser@example.com"
+          value={adding}
+          onChange={(e) => { setAdding(e.target.value); setError(''); }}
+          autoCapitalize="none"
+        />
+        <button
+          onClick={() => save([...admins, adding.trim()])}
+          disabled={saving || !adding.includes('@')}
+          className="px-4 bg-green-600 rounded-xl text-sm font-semibold disabled:opacity-40"
+        >
+          Add
+        </button>
+      </div>
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+    </div>
+  );
+}
+
 // ── Admin page ────────────────────────────────────────────────────────────────
 
 export function Admin() {
-  const { tournament, logout, tournamentId, isAppAdmin, updateTournamentData } = useContext(AuthContext);
+  const { tournament, logout, tournamentId, isAppAdmin, updateTournamentData, email, myTournamentIds, selectTournament } = useContext(AuthContext);
   // tournamentId is always set by the time Admin renders (route guard + loginAsAdmin/enterTournamentAsAdmin)
   const tId = tournamentId ?? '';
 
@@ -152,10 +216,11 @@ export function Admin() {
 
   // Inline pairing form (one at a time)
   const [gName, setGName] = useState('');
-  const [gPin, setGPin] = useState('');
+  const [gEmail, setGEmail] = useState('');
+  const [invite, setInvite] = useState<{ groupId: string; state: 'sending' | 'sent' | 'error'; text?: string } | null>(null);
   const [gPlayers, setGPlayers] = useState(['', '', '', '']);
   const [gSaving, setGSaving] = useState(false);
-  const [pinError, setPinError] = useState('');
+  const [pairingError, setPairingError] = useState('');
 
   // Status-change confirmation
   const [pendingStatusRound, setPendingStatusRound] = useState<Round | null>(null);
@@ -311,9 +376,9 @@ export function Admin() {
     setEditingGroupId(null);
     setAddingGroupToRound(roundId);
     setGName('');
-    setGPin(randomPin(tournament?.adminPin));
+    setGEmail('');
     setGPlayers(['', '', '', '']);
-    setPinError('');
+    setPairingError('');
   };
 
   const cancelAddPairing = () => setAddingGroupToRound(null);
@@ -322,81 +387,73 @@ export function Admin() {
     setAddingGroupToRound(null);
     setEditingGroupId(group.id);
     setGName(group.name);
-    setGPin(group.pin);
-    setPinError('');
+    setGEmail(group.scorerEmail ?? '');
+    setPairingError('');
     const names = group.players.map((p) => p.name);
     while (names.length < 4) names.push('');
     setGPlayers(names);
   };
 
   const saveEdit = async (roundId: string, group: Group) => {
-    if (!gName.trim() || !gPin.trim()) return;
+    if (!gName.trim()) return;
     // Player IDs stay with their slot, so removing player 2 does not move
     // players 3 and 4 onto other IDs and mis-attribute their scores (B10).
     const players: Player[] = gPlayers
       .map((name, i) => ({ id: group.players[i]?.id ?? nanoid(), name: name.trim() }))
       .filter((p) => p.name);
     const format = rounds.find((r) => r.id === roundId)?.format;
-    const invalid = validatePairing(gPin.trim(), tournament?.adminPin, format, players.length);
+    const invalid = validatePairing(gEmail.trim(), format, players.length);
     if (invalid) {
-      setPinError(invalid);
+      setPairingError(invalid);
       return;
     }
     setGSaving(true);
     try {
-      const existing = await getGroupByPin(tId, gPin.trim());
-      if (existing && existing.id !== group.id) {
-        setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
-        return;
-      }
-      setPinError('');
+      setPairingError('');
+      const scorerEmail = gEmail.trim().toLowerCase() || undefined;
       await updateGroup(tId, group.id, {
         name: gName.trim(),
-        pin: gPin.trim(),
+        scorerEmail,
         players,
       });
       setGroupsByRound((prev) => ({
         ...prev,
         [roundId]: (prev[roundId] ?? []).map((g) =>
-          g.id === group.id ? { ...g, name: gName.trim(), pin: gPin.trim(), players } : g,
+          g.id === group.id ? { ...g, name: gName.trim(), scorerEmail, players } : g,
         ),
       }));
       setEditingGroupId(null);
     } catch (err) {
       console.error('saveEdit error', err);
-      setPinError('Could not save. Check your connection and try again.');
+      setPairingError('Could not save. Check your connection and try again.');
     } finally {
       setGSaving(false);
     }
   };
 
   const savePairing = async (roundId: string) => {
-    if (!gName.trim() || !gPin.trim()) return;
+    if (!gName.trim()) return;
     const players: Player[] = gPlayers
       .filter((n) => n.trim())
       .map((name) => ({ id: nanoid(), name: name.trim() }));
     const format = rounds.find((r) => r.id === roundId)?.format;
-    const invalid = validatePairing(gPin.trim(), tournament?.adminPin, format, players.length);
+    const invalid = validatePairing(gEmail.trim(), format, players.length);
     if (invalid) {
-      setPinError(invalid);
+      setPairingError(invalid);
       return;
     }
     setGSaving(true);
     try {
-      const existing = await getGroupByPin(tId, gPin.trim());
-      if (existing) {
-        setPinError(`PIN ${gPin.trim()} is already used by "${existing.name}"`);
-        return;
-      }
-      setPinError('');
+      setPairingError('');
       const id = nanoid();
+      const scorerEmail = gEmail.trim().toLowerCase() || undefined;
       await createGroup(tId, id, {
         name: gName.trim(),
-        pin: gPin.trim(),
+        scorerEmail,
         players,
         roundId,
       });
-      const newGroup: Group = { id, name: gName.trim(), pin: gPin.trim(), players, roundId };
+      const newGroup: Group = { id, name: gName.trim(), scorerEmail, players, roundId };
       setGroupsByRound((prev) => ({
         ...prev,
         [roundId]: [...(prev[roundId] ?? []), newGroup],
@@ -404,15 +461,26 @@ export function Admin() {
       setAddingGroupToRound(null);
     } catch (err) {
       console.error('savePairing error', err);
-      setPinError('Could not save. Check your connection and try again.');
+      setPairingError('Could not save. Check your connection and try again.');
     } finally {
       setGSaving(false);
     }
   };
 
+  const sendInvite = async (g: Group) => {
+    setInvite({ groupId: g.id, state: 'sending' });
+    try {
+      const to = await inviteScorer(tId, g.id);
+      setInvite({ groupId: g.id, state: 'sent', text: to });
+    } catch (err) {
+      setInvite({ groupId: g.id, state: 'error' });
+      window.alert(err instanceof Error ? err.message : 'Could not send the sign-in link.');
+    }
+  };
+
   const removeGroup = async (roundId: string, groupId: string) => {
     const name = groupsByRound[roundId]?.find((g) => g.id === groupId)?.name ?? 'this pairing';
-    if (!window.confirm(`Delete ${name}? Its PIN stops working and any scores for this round are deleted.`)) return;
+    if (!window.confirm(`Delete ${name}? Its scorer loses access and any scores for this round are deleted.`)) return;
     await deleteGroupWithScores(tId, roundId, groupId);
     setScoresByRound((prev) => ({
       ...prev,
@@ -602,8 +670,12 @@ export function Admin() {
           <p className="text-gray-400 text-sm">{tournament?.name}</p>
         </div>
         <div className="flex items-center gap-4">
-          {isAppAdmin && (
+          {isAppAdmin ? (
             <a href="/app-admin" className="text-blue-400 text-sm">All Tournaments</a>
+          ) : myTournamentIds.length > 1 && (
+            <button onClick={() => { void selectTournament(null).then(() => { window.location.href = '/'; }); }} className="text-blue-400 text-sm">
+              Switch
+            </button>
           )}
           <a href="/admin/results" className="text-gray-400 text-sm">Results</a>
           <button onClick={logout} className="text-red-400 text-sm font-medium">
@@ -709,6 +781,8 @@ export function Admin() {
                   </button>
                 </div>
               </div>
+
+              {tId && <OrganisersEditor tournamentId={tId} initial={tournament?.admins ?? []} me={email} />}
 
               {/* Backup */}
               <div className="flex flex-col gap-1.5 border-t border-gray-700 pt-3">
@@ -1102,23 +1176,16 @@ export function Admin() {
                           value={gName}
                           onChange={(e) => setGName(e.target.value)}
                         />
-                        <div className="flex gap-2">
-                          <input
-                            className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                            placeholder="4-digit PIN"
-                            value={gPin}
-                            onChange={(e) => { setGPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setPinError(''); }}
-                            maxLength={4}
-                            inputMode="numeric"
-                          />
-                          <button
-                            onClick={() => setGPin(randomPin(tournament?.adminPin))}
-                            className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
-                          >
-                            Random PIN
-                          </button>
-                        </div>
-                        {pinError && <p className="text-red-400 text-xs">{pinError}</p>}
+                        <input
+                          type="email"
+                          className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                          placeholder="Scorer email (gets the sign-in link)"
+                          value={gEmail}
+                          onChange={(e) => { setGEmail(e.target.value); setPairingError(''); }}
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                        />
+                        {pairingError && <p className="text-red-400 text-xs">{pairingError}</p>}
                         <p className="text-gray-400 text-xs">Players (up to 4):</p>
                         {gPlayers.map((name, i) => {
                           const otherNames = new Set(
@@ -1148,7 +1215,7 @@ export function Admin() {
                         <div className="flex gap-2 mt-1">
                           <button
                             onClick={() => saveEdit(r.id, g)}
-                            disabled={gSaving || !gName.trim() || !gPin.trim()}
+                            disabled={gSaving || !gName.trim() || !gEmail.trim()}
                             className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                           >
                             {gSaving ? 'Saving…' : 'Save'}
@@ -1169,7 +1236,9 @@ export function Admin() {
                               {g.id === winnerGroupId && <span>🥇</span>}
                               <p className="font-medium text-sm">{g.name}</p>
                             </div>
-                            <p className="text-gray-400 text-xs">PIN: {g.pin}</p>
+                            <p className="text-gray-400 text-xs break-all">
+                              Scorer: {g.scorerEmail ?? <span className="text-yellow-500">none yet (Edit to add)</span>}
+                            </p>
                             <div className="flex flex-col gap-0.5 mt-1">
                               {g.players.map((p) => {
                                 const ppts = summary?.playerPoints?.find((pp) => pp.playerId === p.id);
@@ -1223,10 +1292,23 @@ export function Admin() {
                               `Group: ${g.name}\n` +
                               `Players: ${players}\n\n` +
                               `Tournament code: ${tId}\n` +
-                              `Group PIN: ${g.pin}\n\n` +
-                              `Login here: ${window.location.origin}/?code=${tId}`;
+                              (g.scorerEmail ? `Scorer: ${g.scorerEmail} (check your email for the sign-in link)\n` : '') +
+                              `\nLive results: ${window.location.origin}/results/${tId}`;
                             return (
                               <>
+                                {g.scorerEmail && (
+                                  <button
+                                    onClick={() => sendInvite(g)}
+                                    disabled={invite?.groupId === g.id && invite.state === 'sending'}
+                                    className="flex items-center gap-1 text-green-400 text-xs font-medium active:text-green-200 disabled:opacity-50"
+                                  >
+                                    {invite?.groupId === g.id
+                                      ? invite.state === 'sending' ? 'Sending…'
+                                        : invite.state === 'sent' ? '✓ Link sent'
+                                        : 'Retry link'
+                                      : '✉️ Send sign-in link'}
+                                  </button>
+                                )}
                                 <a
                                   href={`sms:?body=${encodeURIComponent(msg)}`}
                                   className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
@@ -1274,23 +1356,16 @@ export function Admin() {
                         value={gName}
                         onChange={(e) => setGName(e.target.value)}
                       />
-                      <div className="flex gap-2">
-                        <input
-                          className="flex-1 bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                          placeholder="4-digit PIN"
-                          value={gPin}
-                          onChange={(e) => { setGPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setPinError(''); }}
-                          maxLength={4}
-                          inputMode="numeric"
-                        />
-                        <button
-                          onClick={() => setGPin(randomPin(tournament?.adminPin))}
-                          className="px-3 h-10 bg-gray-500 rounded-lg text-xs font-semibold text-gray-200 whitespace-nowrap"
-                        >
-                          Random PIN
-                        </button>
-                      </div>
-                      {pinError && <p className="text-red-400 text-xs">{pinError}</p>}
+                      <input
+                        type="email"
+                        className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
+                        placeholder="Scorer email (gets the sign-in link)"
+                        value={gEmail}
+                        onChange={(e) => { setGEmail(e.target.value); setPairingError(''); }}
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                      />
+                      {pairingError && <p className="text-red-400 text-xs">{pairingError}</p>}
                       <p className="text-gray-400 text-xs">Players (up to 4):</p>
                       {gPlayers.map((name, i) => {
                         const otherNames = new Set(
@@ -1320,7 +1395,7 @@ export function Admin() {
                       <div className="flex gap-2 mt-1">
                         <button
                           onClick={() => savePairing(r.id)}
-                          disabled={gSaving || !gName.trim() || !gPin.trim()}
+                          disabled={gSaving || !gName.trim() || !gEmail.trim()}
                           className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                         >
                           {gSaving ? 'Saving…' : 'Save'}

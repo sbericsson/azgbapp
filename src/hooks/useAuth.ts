@@ -1,116 +1,92 @@
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { isNetworkError, clearCache } from '../lib/api';
 import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  useCallback,
-} from 'react';
-import {
-  findTournamentByCode,
-  getGroupByPin,
+  fetchMe,
   getTournament,
-  getGroupById,
-  updateGroup,
+  signOut,
   updateTournament,
-  getAppConfig,
-} from '../lib/firestore';
-import type { Group, Tournament } from '../types/tournament';
+  type Me,
+  type ScorerGroupRef,
+} from '../lib/data';
+import type { Tournament } from '../types/tournament';
+
+/**
+ * Who is signed in (R13). The session is an httpOnly cookie set by the server
+ * after an emailed link or code; it lasts 60 days from last use. The server's
+ * answer to /auth/me (organiser of which tournaments, scorer of which groups)
+ * is cached on the phone so the app opens offline. The tournament being
+ * viewed is remembered per device.
+ */
 
 interface AuthState {
+  me: Me | null;
   tournamentId: string | null;
   tournament: Tournament | null;
-  group: Group | null;
-  isAdmin: boolean;
-  isAppAdmin: boolean;
   loading: boolean;
 }
 
-interface AuthContextValue extends AuthState {
-  loginAsGroup: (tournamentId: string, pin: string) => Promise<boolean>;
-  loginAsAdmin: (tournamentId: string, pin: string) => Promise<boolean>;
-  loginAsAppAdmin: (pin: string) => Promise<boolean>;
-  enterTournamentAsAdmin: (tournamentId: string) => Promise<void>;
-  logout: () => void;
-  updateGroupName: (newName: string) => Promise<void>;
-  updateTournamentData: (data: Partial<Tournament>) => Promise<void>;
-}
-
-const SESSION_KEY = 'azgb_session';
-
-// Sliding expiry: the session lasts this long after the app was last used,
-// so a reload late in a long round does not drop golfers to the login screen (B12).
-const SESSION_TTL_MS = 16 * 60 * 60 * 1000; // 16 hours since last use
-
-interface StoredSession {
-  tournamentId: string | null;
-  groupId: string | null;
-  isAdmin: boolean;
+export interface AuthContextValue extends AuthState {
+  email: string | null;
   isAppAdmin: boolean;
-  loginAt: number;
+  /** Organiser of the current tournament (or app admin inside it) */
+  isAdmin: boolean;
+  /** Groups this person scores for in the current tournament */
+  scorerGroups: ScorerGroupRef[];
+  /** Tournament codes this person organises or scores in */
+  myTournamentIds: string[];
+  groupForRound: (roundId: string) => ScorerGroupRef | null;
+  /** After /auth/verify: remember who signed in and open their tournament */
+  completeSignIn: (me: Me & { tournamentId?: string | null }) => Promise<void>;
+  selectTournament: (id: string | null) => Promise<boolean>;
+  refreshMe: () => Promise<void>;
+  logout: () => void;
+  updateTournamentData: (data: Partial<Pick<Tournament, 'name' | 'logoUrl'>>) => Promise<void>;
 }
 
-const DEFAULT_AUTH_STATE: AuthState = {
-  tournamentId: null,
-  tournament: null,
-  group: null,
-  isAdmin: false,
-  isAppAdmin: false,
-  loading: true,
-};
+const ME_KEY = 'azgb_me';
+const TOURNAMENT_KEY = 'azgb_tournament';
 
-function readStoredSession(): StoredSession | null {
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-
+function readJson<T>(key: string): T | null {
   try {
-    const session = JSON.parse(raw) as StoredSession;
-    if (!session.loginAt || Date.now() - session.loginAt > SESSION_TTL_MS) {
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-    return session;
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
   } catch {
-    localStorage.removeItem(SESSION_KEY);
     return null;
   }
 }
 
-/** Extend the session's expiry because the app is in use. */
-function touchStoredSession(): void {
+function writeJson(key: string, value: unknown) {
   try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return;
-    const session = JSON.parse(raw) as StoredSession;
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, loginAt: Date.now() }));
+    if (value === null || value === undefined) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Storage unavailable; nothing to extend
+    // Storage unavailable
   }
 }
 
-/** Distinguish "does not exist" (null) from "could not check" (thrown). */
-async function fetchOrError<T>(fn: () => Promise<T | null>): Promise<{ value: T | null; failed: boolean }> {
-  try {
-    return { value: await fn(), failed: false };
-  } catch (err) {
-    console.error('session restore fetch failed', err);
-    return { value: null, failed: true };
-  }
+function tournamentIdsOf(me: Me | null): string[] {
+  if (!me) return [];
+  return [...new Set([...me.admin, ...me.groups.map((g) => g.tournamentId)])];
 }
+
+const noop = async () => {};
 
 export const AuthContext = createContext<AuthContextValue>({
+  me: null,
   tournamentId: null,
   tournament: null,
-  group: null,
-  isAdmin: false,
-  isAppAdmin: false,
   loading: false,
-  loginAsGroup: async () => false,
-  loginAsAdmin: async () => false,
-  loginAsAppAdmin: async () => false,
-  enterTournamentAsAdmin: async () => {},
+  email: null,
+  isAppAdmin: false,
+  isAdmin: false,
+  scorerGroups: [],
+  myTournamentIds: [],
+  groupForRound: () => null,
+  completeSignIn: noop,
+  selectTournament: async () => false,
+  refreshMe: noop,
   logout: () => {},
-  updateGroupName: async () => {},
-  updateTournamentData: async () => {},
+  updateTournamentData: noop,
 });
 
 export function useAuth() {
@@ -119,213 +95,127 @@ export function useAuth() {
 
 export function useAuthProvider(): AuthContextValue {
   const [state, setState] = useState<AuthState>(() => {
-    const session = readStoredSession();
-    return session ? DEFAULT_AUTH_STATE : { ...DEFAULT_AUTH_STATE, loading: false };
+    const me = readJson<Me>(ME_KEY);
+    return {
+      me: me?.email ? me : null,
+      tournamentId: readJson<string>(TOURNAMENT_KEY),
+      tournament: null,
+      loading: true,
+    };
   });
 
-  // Keep the session alive while the app is being used
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') touchStoredSession();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    const interval = window.setInterval(touchStoredSession, 10 * 60 * 1000);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible);
-      window.clearInterval(interval);
-    };
+  // Bumped by every sign-in or refresh, so a slower, older answer (the start-up
+  // check racing an emailed link) cannot overwrite a newer identity
+  const generation = useRef(0);
+
+  const loadTournament = useCallback(async (id: string | null): Promise<Tournament | null> => {
+    if (!id) return null;
+    try {
+      return await getTournament(id);
+    } catch (err) {
+      if (isNetworkError(err)) return null;
+      throw err;
+    }
   }, []);
 
-  // Restore session on mount
-  useEffect(() => {
-    const session = readStoredSession();
-    if (!session) {
-      return;
-    }
-    touchStoredSession();
+  const applyMe = useCallback(async (me: Me | null, preferred: string | null, gen: number) => {
+    if (gen !== generation.current) return;
+    writeJson(ME_KEY, me?.email ? me : null);
+    const ids = tournamentIdsOf(me);
+    let tournamentId = preferred;
+    // Only one tournament to choose from: open it
+    if (!tournamentId && me?.email && !me.appAdmin && ids.length === 1) tournamentId = ids[0];
+    if (!me?.email) tournamentId = null;
+    writeJson(TOURNAMENT_KEY, tournamentId);
+    const tournament = await loadTournament(tournamentId).catch(() => null);
+    if (gen !== generation.current) return;
+    setState({ me: me?.email ? me : null, tournamentId, tournament, loading: false });
+  }, [loadTournament]);
 
+  // Restore on start: ask the server who we are; offline, trust the cached answer
+  useEffect(() => {
+    let cancelled = false;
+    const gen = generation.current;
     (async () => {
-      // App admin session
-      if (session.isAppAdmin) {
-        if (session.tournamentId) {
-          // App admin had entered a tournament — restore that context
-          const tournament = await getTournament(session.tournamentId).catch(() => null);
-          setState({
-            tournamentId: session.tournamentId,
-            tournament,
-            group: null,
-            isAdmin: !!tournament,
-            isAppAdmin: true,
-            loading: false,
-          });
-        } else {
-          setState({
-            tournamentId: null,
-            tournament: null,
-            group: null,
-            isAdmin: false,
-            isAppAdmin: true,
-            loading: false,
-          });
-        }
-        return;
+      const cached = readJson<Me>(ME_KEY);
+      const preferred = readJson<string>(TOURNAMENT_KEY);
+      let me: Me | null = cached;
+      try {
+        me = await fetchMe();
+      } catch (err) {
+        if (!isNetworkError(err)) me = null;
       }
-
-      // Tournament admin or group session — tournamentId required
-      if (!session.tournamentId) {
-        localStorage.removeItem(SESSION_KEY);
-        setState({ ...DEFAULT_AUTH_STATE, loading: false });
-        return;
-      }
-      const tournamentId = session.tournamentId;
-      const { value: tournament, failed } = await fetchOrError(() => getTournament(tournamentId));
-      if (!tournament) {
-        // Only forget the session when the tournament is really gone; on a
-        // network error keep it so a reload with signal restores it (B12).
-        if (!failed) localStorage.removeItem(SESSION_KEY);
-        setState({ ...DEFAULT_AUTH_STATE, loading: false });
-        return;
-      }
-      if (session.isAdmin) {
-        setState({
-          tournamentId: session.tournamentId,
-          tournament,
-          group: null,
-          isAdmin: true,
-          isAppAdmin: false,
-          loading: false,
-        });
-        return;
-      }
-      if (session.groupId) {
-        const groupId = session.groupId;
-        const { value: group, failed: groupFailed } = await fetchOrError(() => getGroupById(tournamentId, groupId));
-        if (!group && !groupFailed) localStorage.removeItem(SESSION_KEY);
-        setState({
-          tournamentId: session.tournamentId,
-          tournament,
-          group,
-          isAdmin: false,
-          isAppAdmin: false,
-          loading: false,
-        });
-      } else {
-        setState({ ...DEFAULT_AUTH_STATE, loading: false });
-      }
+      if (!cancelled) await applyMe(me, preferred, gen);
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [applyMe]);
 
-  const loginAsGroup = useCallback(
-    async (tournamentId: string, pin: string): Promise<boolean> => {
-      const tournament = await findTournamentByCode(tournamentId);
-      if (!tournament) return false;
-      const group = await getGroupByPin(tournament.id, pin);
-      if (!group) return false;
-      const session: StoredSession = {
-        tournamentId: tournament.id,
-        groupId: group.id,
-        isAdmin: false,
-        isAppAdmin: false,
-        loginAt: Date.now(),
-      };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      setState({ tournamentId: tournament.id, tournament, group, isAdmin: false, isAppAdmin: false, loading: false });
-      return true;
-    },
-    [],
-  );
-
-  const loginAsAdmin = useCallback(
-    async (tournamentId: string, pin: string): Promise<boolean> => {
-      const tournament = await findTournamentByCode(tournamentId);
-      if (!tournament) return false;
-      if (tournament.adminPin !== pin) return false;
-      const session: StoredSession = {
-        tournamentId: tournament.id,
-        groupId: null,
-        isAdmin: true,
-        isAppAdmin: false,
-        loginAt: Date.now(),
-      };
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      setState({ tournamentId: tournament.id, tournament, group: null, isAdmin: true, isAppAdmin: false, loading: false });
-      return true;
-    },
-    [],
-  );
-
-  const loginAsAppAdmin = useCallback(async (pin: string): Promise<boolean> => {
-    const config = await getAppConfig();
-    if (!config || config.appAdminPin !== pin) return false;
-    const session: StoredSession = {
-      tournamentId: null,
-      groupId: null,
-      isAdmin: false,
-      isAppAdmin: true,
-      loginAt: Date.now(),
-    };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    setState({
-      tournamentId: null,
-      tournament: null,
-      group: null,
-      isAdmin: false,
-      isAppAdmin: true,
-      loading: false,
-    });
-    return true;
-  }, []);
-
-  const enterTournamentAsAdmin = useCallback(async (tournamentId: string): Promise<void> => {
-    const tournament = await findTournamentByCode(tournamentId);
-    if (!tournament) return;
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (raw) {
-      const s: StoredSession = JSON.parse(raw);
-      localStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, tournamentId: tournament.id }));
+  const refreshMe = useCallback(async () => {
+    const gen = ++generation.current;
+    try {
+      const me = await fetchMe();
+      await applyMe(me, readJson<string>(TOURNAMENT_KEY), gen);
+    } catch {
+      // Keep what we have
     }
-    setState((prev) => ({ ...prev, tournamentId: tournament.id, tournament, isAdmin: true }));
-  }, []);
+  }, [applyMe]);
+
+  const completeSignIn = useCallback(async (me: Me & { tournamentId?: string | null }) => {
+    const gen = ++generation.current;
+    const { tournamentId, ...rest } = me;
+    await applyMe(rest, tournamentId ?? readJson<string>(TOURNAMENT_KEY), gen);
+  }, [applyMe]);
+
+  const selectTournament = useCallback(async (id: string | null): Promise<boolean> => {
+    if (!id) {
+      writeJson(TOURNAMENT_KEY, null);
+      setState((s) => ({ ...s, tournamentId: null, tournament: null }));
+      return true;
+    }
+    const tournament = await loadTournament(id);
+    if (!tournament) return false;
+    writeJson(TOURNAMENT_KEY, tournament.id);
+    setState((s) => ({ ...s, tournamentId: tournament.id, tournament }));
+    return true;
+  }, [loadTournament]);
 
   const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY);
-    // Full page reload: re-initializes Firestore from scratch, clearing any
-    // stale IndexedDB state from the previous session.
-    window.location.replace('/');
+    void signOut().catch(() => {}).finally(() => {
+      writeJson(ME_KEY, null);
+      writeJson(TOURNAMENT_KEY, null);
+      clearCache();
+      window.location.replace('/');
+    });
   }, []);
 
-  const updateGroupName = useCallback(
-    async (newName: string) => {
-      if (!state.group || !state.tournamentId) return;
-      await updateGroup(state.tournamentId, state.group.id, { name: newName });
-      setState((prev) => ({
-        ...prev,
-        group: prev.group ? { ...prev.group, name: newName } : null,
-      }));
-    },
-    [state.group, state.tournamentId],
-  );
+  const updateTournamentData = useCallback(async (data: Partial<Pick<Tournament, 'name' | 'logoUrl'>>) => {
+    if (!state.tournamentId) return;
+    await updateTournament(state.tournamentId, data);
+    setState((prev) => ({ ...prev, tournament: prev.tournament ? { ...prev.tournament, ...data } : null }));
+  }, [state.tournamentId]);
 
-  const updateTournamentData = useCallback(
-    async (data: Partial<Tournament>) => {
-      if (!state.tournamentId) return;
-      await updateTournament(state.tournamentId, data);
-      setState((prev) => ({
-        ...prev,
-        tournament: prev.tournament ? { ...prev.tournament, ...data } : null,
-      }));
-    },
-    [state.tournamentId],
-  );
+  const derived = useMemo(() => {
+    const me = state.me;
+    const isAppAdmin = !!me?.appAdmin;
+    const isAdmin = !!state.tournamentId && (isAppAdmin || !!me?.admin.includes(state.tournamentId));
+    const scorerGroups = me?.groups.filter((g) => g.tournamentId === state.tournamentId) ?? [];
+    return {
+      email: me?.email ?? null,
+      isAppAdmin,
+      isAdmin,
+      scorerGroups,
+      myTournamentIds: tournamentIdsOf(me),
+      groupForRound: (roundId: string) => scorerGroups.find((g) => g.roundId === roundId) ?? null,
+    };
+  }, [state.me, state.tournamentId]);
 
   return {
     ...state,
-    loginAsGroup,
-    loginAsAdmin,
-    loginAsAppAdmin,
-    enterTournamentAsAdmin,
+    ...derived,
+    completeSignIn,
+    selectTournament,
+    refreshMe,
     logout,
-    updateGroupName,
     updateTournamentData,
   };
 }

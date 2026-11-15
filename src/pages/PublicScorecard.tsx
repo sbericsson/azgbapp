@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { getGroupById, listRounds } from '../lib/firestore';
+import { getGroupById, listRounds } from '../lib/data';
 import { useGroup } from '../hooks/useGroup';
 import type { Round, Group } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';

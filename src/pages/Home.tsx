@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { subscribeRounds, listCourses } from '../lib/firestore';
+import { subscribeRounds, listCourses } from '../lib/data';
 import type { Round, Course } from '../types/tournament';
 
 const dayOrder: Round['day'][] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -23,7 +23,7 @@ const formatLabel: Record<string, string> = {
 };
 
 export function Home() {
-  const { group, logout, tournamentId, tournament } = useContext(AuthContext);
+  const { groupForRound, scorerGroups, myTournamentIds, selectTournament, logout, tournamentId, tournament, email } = useContext(AuthContext);
   const navigate = useNavigate();
   const [allRounds, setAllRounds] = useState<Round[]>([]);
   const [courseMap, setCourseMap] = useState<Map<string, Course>>(new Map());
@@ -58,7 +58,7 @@ export function Home() {
   const rounds = allRounds.filter((r) => {
     if (r.status === 'pending') return false;
     if (r.status === 'complete') return true; // all completed rounds visible to everyone
-    return !group || group.roundId === r.id;  // active: only their assigned round
+    return !!groupForRound(r.id);  // active: only rounds where they keep score
   });
 
   const byDay = dayOrder.reduce<Record<string, Round[]>>((acc, day) => {
@@ -72,11 +72,19 @@ export function Home() {
       <header className="bg-gray-900 px-4 py-4 flex items-center justify-between border-b border-gray-700">
         <div className="flex items-center gap-3">
           <img src={tournament?.logoUrl || '/azgb-logo.png'} alt="AZGB" className="h-10 w-auto bg-white rounded-lg p-0.5" />
-          {group && <p className="text-green-400 text-sm font-medium">{group.name}</p>}
+          <div className="min-w-0">
+            <p className="text-white text-sm font-semibold truncate">{tournament?.name}</p>
+            <p className="text-gray-400 text-xs truncate">{email}</p>
+          </div>
         </div>
-        <button onClick={logout} className="text-gray-400 text-sm">
-          Logout
-        </button>
+        <div className="flex items-center gap-4">
+          {myTournamentIds.length > 1 && (
+            <button onClick={() => selectTournament(null)} className="text-gray-400 text-sm">Switch</button>
+          )}
+          <button onClick={logout} className="text-gray-400 text-sm">
+            Logout
+          </button>
+        </div>
       </header>
 
       <div className="p-4 max-w-lg mx-auto">
@@ -99,8 +107,12 @@ export function Home() {
         {!loading && !error && rounds.length === 0 && (
           <div className="text-center py-12">
             <p className="text-4xl mb-3">🏌️</p>
-            <p className="text-gray-400">No active rounds yet.</p>
-            <p className="text-gray-500 text-sm mt-1">Check back when the commissioner starts a round.</p>
+            <p className="text-gray-400">No active rounds for you yet.</p>
+            <p className="text-gray-500 text-sm mt-1">
+              {scorerGroups.length === 0
+                ? `You're not the scorer for any group in ${tournament?.name ?? 'this tournament'}. Ask the organiser.`
+                : 'Check back when the commissioner starts a round.'}
+            </p>
           </div>
         )}
 
@@ -128,6 +140,9 @@ export function Home() {
                       {formatLabel[round.format]} · {round.holes} holes
                       {course ? ` · ${course.name}` : ''}
                     </p>
+                    {groupForRound(round.id) && (
+                      <p className="text-green-400 text-xs font-medium mt-0.5">Scoring for {groupForRound(round.id)!.name}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {round.status === 'active' && (

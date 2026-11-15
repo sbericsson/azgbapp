@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { subscribeGroupScores, saveGroupHoles } from '../lib/firestore';
+import { subscribeGroupScores, saveGroupHoles } from '../lib/data';
 import type { HoleScore } from '../types/scoring';
 import type { Player, Round } from '../types/tournament';
 import { buildInitialHoles, completeHoles, mergeRemoteHoles } from '../lib/scoring/holes';

@@ -50,7 +50,6 @@ interface Props {
   onChange: (result: CourseSearchResult) => void;
 }
 
-const API_KEY = import.meta.env.VITE_GOLF_COURSE_API_KEY as string | undefined;
 const DEFAULT_HOLES = 18;
 // Frozen so consumers can't accidentally mutate the module-level array
 const DEFAULT_PAR = Object.freeze(Array(DEFAULT_HOLES).fill(4)) as number[];
@@ -113,7 +112,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
     onChange({ ...value, name: q });
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!API_KEY || !q.trim() || q.trim().length < 3) {
+    if (!q.trim() || q.trim().length < 3) {
       setResults([]);
       setShowDropdown(false);
       return;
@@ -123,8 +122,8 @@ export function CourseSearchStep({ value, onChange }: Props) {
       setSearching(true);
       try {
         const res = await fetch(
-          `https://api.golfcourseapi.com/v1/courses?club_name=${encodeURIComponent(q.trim())}`,
-          { headers: { Authorization: `Key ${API_KEY}` } },
+          // Same-origin proxy: nginx adds the API key server-side (R15)
+          `/proxy/golfcourse/v1/courses?club_name=${encodeURIComponent(q.trim())}`,
         );
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data: ApiSearchResponse = await res.json();
@@ -214,11 +213,6 @@ export function CourseSearchStep({ value, onChange }: Props) {
         </div>
 
         {searchError && <p className="text-yellow-500 text-xs">{searchError}</p>}
-        {!API_KEY && (
-          <p className="text-gray-600 text-xs">
-            Course search not configured — add <code className="text-gray-500">VITE_GOLF_COURSE_API_KEY</code> to enable.
-          </p>
-        )}
       </div>
 
       {/* Holes/par fields — shown once the user has typed a course name */}

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { useGroup } from '../hooks/useGroup';
 import { useLeaderboard } from '../hooks/useLeaderboard';
-import { subscribeRound, getCourse, subscribeGroupsByRound } from '../lib/firestore';
+import { subscribeRound, getCourse, subscribeGroupsByRound, updateGroup } from '../lib/data';
 import type { Round, Group } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore, HoleScore } from '../types/scoring';
 import { HoleHeader } from '../components/scorecard/HoleHeader';
@@ -34,13 +34,15 @@ import type { LeaderboardEntry } from '../hooks/useLeaderboard';
 export function Scorecard() {
   const { roundId, groupId: groupParam } = useParams<{ roundId: string; groupId?: string }>();
   const navigate = useNavigate();
-  const { group: authGroup, updateGroupName, tournamentId, isAdmin } = useContext(AuthContext);
+  const { groupForRound, tournamentId, isAdmin } = useContext(AuthContext);
   // Organiser correcting a group's scores from the admin panel (R6). Edits are
   // allowed on a completed round and no commentary is shown.
   const adminMode = Boolean(groupParam && isAdmin);
-  const [adminGroup, setAdminGroup] = useState<Group | null>(null);
-  const [adminGroupLoaded, setAdminGroupLoaded] = useState(false);
-  const group = adminMode ? adminGroup : authGroup;
+  // The group being scored: from the URL for an organiser, else this scorer's group in the round
+  const targetGroupId = adminMode ? groupParam ?? null : (roundId ? groupForRound(roundId)?.id ?? null : null);
+  const [groupState, setGroupState] = useState<{ id: string | null; group: Group | null }>({ id: null, group: null });
+  const group = groupState.id === targetGroupId ? groupState.group : null;
+  const groupLoaded = !targetGroupId || groupState.id === targetGroupId;
 
   const [round, setRound] = useState<Round | null>(null);
   const [roundLoaded, setRoundLoaded] = useState(false);
@@ -123,12 +125,15 @@ export function Scorecard() {
   }, []);
 
   useEffect(() => {
-    if (!adminMode || !tournamentId || !roundId) return;
+    if (!targetGroupId || !tournamentId || !roundId) return;
     return subscribeGroupsByRound(tournamentId, roundId, (groups) => {
-      setAdminGroup(groups.find((g) => g.id === groupParam) ?? null);
-      setAdminGroupLoaded(true);
+      const next = groups.find((g) => g.id === targetGroupId) ?? null;
+      // Keep the same object when nothing changed so useGroup does not resubscribe
+      setGroupState((prev) => (prev.id === targetGroupId && JSON.stringify(prev.group) === JSON.stringify(next)
+        ? prev
+        : { id: targetGroupId, group: next }));
     });
-  }, [adminMode, tournamentId, roundId, groupParam]);
+  }, [targetGroupId, tournamentId, roundId]);
 
   // Subscribe to all groups in this round (for leaderboard rank — bestBall/scramble only)
   useEffect(() => {
@@ -173,12 +178,19 @@ export function Scorecard() {
 
   if (!group || !round) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center px-6 text-center">
         <p className="text-gray-400">
-          {loading || !roundLoaded || (adminMode && !adminGroupLoaded)
+          {loading || !roundLoaded || !groupLoaded
             ? 'Loading…'
-            : adminMode && !group ? 'Group not found' : 'Round not found'}
+            : !round ? 'Round not found'
+            : adminMode ? 'Group not found'
+            : 'You are not the scorer for a group in this round.'}
         </p>
+        {!loading && roundLoaded && groupLoaded && (
+          <button onClick={() => navigate(adminMode ? '/admin' : '/')} className="mt-4 px-5 h-12 rounded-xl bg-gray-700 text-white font-medium">
+            ← Back
+          </button>
+        )}
       </div>
     );
   }
@@ -462,7 +474,13 @@ export function Scorecard() {
 
   const handleEditNameSave = async () => {
     const trimmed = nameInput.trim();
-    if (trimmed) await updateGroupName(trimmed);
+    if (trimmed && tournamentId && group) {
+      try {
+        await updateGroup(tournamentId, group.id, { name: trimmed });
+      } catch {
+        window.alert('Could not rename the group. Check your connection and try again.');
+      }
+    }
     setEditingName(false);
   };
 

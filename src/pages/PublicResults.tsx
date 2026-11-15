@@ -7,8 +7,8 @@ import {
   listGroupsByRound,
   listAllScores,
   subscribeAllScores,
-} from '../lib/firestore';
-import type { Unsubscribe } from 'firebase/firestore';
+} from '../lib/data';
+import type { Unsubscribe } from '../lib/data';
 import type { Group, Round, RoundFormat, Tournament } from '../types/tournament';
 import type { WolfHoleScore, BestBallHoleScore, ScrambleHoleScore, GauntletHoleScore } from '../types/scoring';
 import { isWolfHole } from '../lib/scoring/wolf';

@@ -11,6 +11,8 @@ import { PublicScorecard } from './pages/PublicScorecard';
 import { PrintResults } from './pages/PrintResults';
 import { PublicResults } from './pages/PublicResults';
 import { CreateTournament } from './pages/CreateTournament';
+import { SignIn } from './pages/SignIn';
+import { TournamentPicker } from './pages/TournamentPicker';
 
 function Spinner() {
   return (
@@ -20,14 +22,14 @@ function Spinner() {
   );
 }
 
-/** Root: Login when not auth'd; redirect by role */
+/** Root: sign-in when signed out; otherwise by role in the open tournament */
 function RootRoute() {
-  const { group, isAdmin, isAppAdmin, loading } = useContext(AuthContext);
+  const { email, tournamentId, isAdmin, isAppAdmin, loading } = useContext(AuthContext);
   if (loading) return <Spinner />;
-  if (isAppAdmin && !isAdmin) return <Navigate to="/app-admin" replace />;
+  if (!email) return <Login />;
+  if (!tournamentId) return isAppAdmin ? <Navigate to="/app-admin" replace /> : <TournamentPicker />;
   if (isAdmin) return <Navigate to="/admin" replace />;
-  if (group) return <Home />;
-  return <Login />;
+  return <Home />;
 }
 
 function ProtectedAppAdminRoute({ element }: { element: ReactElement }) {
@@ -37,10 +39,11 @@ function ProtectedAppAdminRoute({ element }: { element: ReactElement }) {
   return element;
 }
 
+/** Signed in with a tournament open (scorer or organiser) */
 function ProtectedGroupRoute({ element }: { element: ReactElement }) {
-  const { group, isAdmin, loading } = useContext(AuthContext);
+  const { email, tournamentId, loading } = useContext(AuthContext);
   if (loading) return <Spinner />;
-  if (!group && !isAdmin) return <Navigate to="/" replace />;
+  if (!email || !tournamentId) return <Navigate to="/" replace />;
   return element;
 }
 
@@ -55,6 +58,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/create" element={<CreateTournament />} />
+      <Route path="/signin" element={<SignIn />} />
       <Route path="/" element={<RootRoute />} />
       <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />
       <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
@@ -70,11 +74,10 @@ function AppRoutes() {
 }
 
 function DevBanner() {
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID as string;
-  if (!projectId?.includes('-dev')) return null;
+  if (!import.meta.env.DEV) return null;
   return (
     <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-500 text-black text-xs font-bold text-center py-1 pointer-events-none">
-      DEV — {projectId}
+      DEV
     </div>
   );
 }

@@ -1,6 +1,6 @@
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY as string | undefined;
 const OPENROUTER_MODEL = (import.meta.env.VITE_OPENROUTER_MODEL as string | undefined) ?? 'deepseek/deepseek-v4-flash';
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// Same-origin proxy: nginx adds the key server-side and rate-limits (R15)
+const OPENROUTER_API_URL = '/proxy/openrouter/chat/completions';
 
 const TIMEOUT_MS = 5000;
 
@@ -358,16 +358,10 @@ function stripPreamble(text: string): string {
 }
 
 export async function getAIFeedback(ctx: AIFeedbackContext): Promise<string> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('No OpenRouter API key configured');
-  }
-
   return getOpenRouterFeedback(ctx);
 }
 
 async function getOpenRouterFeedback(ctx: AIFeedbackContext): Promise<string> {
-  if (!OPENROUTER_API_KEY) throw new Error('No OpenRouter API key configured');
-
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -375,7 +369,6 @@ async function getOpenRouterFeedback(ctx: AIFeedbackContext): Promise<string> {
     const res = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': window.location.origin,
         'X-Title': 'Golf Bender',

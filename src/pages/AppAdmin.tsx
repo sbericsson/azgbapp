@@ -6,9 +6,9 @@ import {
   createTournament,
   setTournamentArchived,
   getTournament,
-} from '../lib/firestore';
+} from '../lib/data';
 import type { Tournament } from '../types/tournament';
-import { importTournament, parseBackup } from '../lib/backup';
+import { importTournament, parseBackup } from '../lib/data';
 
 function fmtDate(ts: number): string {
   return new Date(ts).toLocaleDateString('en-US', {
@@ -19,7 +19,7 @@ function fmtDate(ts: number): string {
 }
 
 export function AppAdmin() {
-  const { logout, enterTournamentAsAdmin } = useContext(AuthContext);
+  const { logout, selectTournament, email } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
@@ -28,8 +28,7 @@ export function AppAdmin() {
   // Create form
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
-  const [newCode, setNewCode] = useState('');
-  const [newAdminPin, setNewAdminPin] = useState('');
+  const [newOrganiser, setNewOrganiser] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -48,34 +47,24 @@ export function AppAdmin() {
 
   const handleCreate = async () => {
     const name = newName.trim();
-    const code = newCode.trim().toLowerCase();
-    const pin = newAdminPin.trim();
-
-    if (!name || !code || !pin) {
-      setCreateError('All fields are required.');
+    const organiser = newOrganiser.trim();
+    if (!name) {
+      setCreateError('Tournament name is required.');
       return;
     }
-    // The login keypad takes exactly 4 digits (B14)
-    if (!/^\d{4}$/.test(pin)) {
-      setCreateError('Admin PIN must be exactly 4 digits.');
-      return;
-    }
-
     setCreateSaving(true);
     setCreateError('');
     try {
-      const existing = await getTournament(code);
-      if (existing) {
-        setCreateError('Tournament code is already in use.');
-        return;
-      }
-      const createdAt = Date.now();
-      await createTournament(code, { name, adminPin: pin, createdAt });
-      setTournaments((prev) => [{ id: code, name, adminPin: pin, createdAt }, ...prev]);
+      // The server picks the code. The organiser signs in with their email;
+      // left blank, you are the organiser.
+      const created = await createTournament(name, organiser ? [organiser] : undefined);
+      const full = await getTournament(created.id);
+      setTournaments((prev) => [full ?? created, ...prev]);
       setNewName('');
-      setNewCode('');
-      setNewAdminPin('');
+      setNewOrganiser('');
       setShowCreate(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not create the tournament.');
     } finally {
       setCreateSaving(false);
     }
@@ -108,7 +97,7 @@ export function AppAdmin() {
         backup.tournamentId,
       );
       if (!target) return;
-      const code = target.trim().toLowerCase();
+      const code = target.trim();
       await importTournament(backup, code);
       const restored = await getTournament(code);
       if (restored) setTournaments((prev) => [restored, ...prev.filter((t) => t.id !== code)]);
@@ -122,15 +111,17 @@ export function AppAdmin() {
   const archivedTournaments = tournaments.filter((t) => t.archivedAt);
 
   const handleEnterAdmin = async (t: Tournament) => {
-    await enterTournamentAsAdmin(t.id);
-    navigate('/admin');
+    if (await selectTournament(t.id)) navigate('/admin');
   };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-bold text-white">App Admin</h1>
+        <div>
+          <h1 className="text-lg font-bold text-white">App Admin</h1>
+          <p className="text-xs text-gray-500">{email}</p>
+        </div>
         <button
           onClick={logout}
           className="text-sm text-gray-400 active:text-white"
@@ -186,33 +177,19 @@ export function AppAdmin() {
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">
-                Tournament Code <span className="text-gray-600">(becomes login code, lowercase)</span>
+                Organiser email <span className="text-gray-600">(blank: you)</span>
               </label>
               <input
-                type="text"
+                type="email"
                 className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm
-                           border border-gray-700 focus:border-green-500 focus:outline-none
-                           tracking-widest"
-                placeholder="e.g. bandon2026"
-                value={newCode}
-                onChange={(e) => setNewCode(e.target.value.toLowerCase())}
+                           border border-gray-700 focus:border-green-500 focus:outline-none"
+                placeholder="organiser@example.com"
+                value={newOrganiser}
+                onChange={(e) => setNewOrganiser(e.target.value)}
                 autoCapitalize="none"
                 autoCorrect="off"
               />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Tournament Admin PIN</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                className="w-full bg-gray-800 rounded-lg px-3 py-2 text-white text-sm
-                           border border-gray-700 focus:border-green-500 focus:outline-none
-                           tracking-widest"
-                placeholder="4 digits"
-                maxLength={4}
-                value={newAdminPin}
-                onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              />
+              <p className="text-xs text-gray-600 mt-1">They sign in at the app with this email. The code is generated.</p>
             </div>
             {createError && (
               <p className="text-red-400 text-xs">{createError}</p>
@@ -247,8 +224,8 @@ export function AppAdmin() {
                   </div>
                   <span className="text-xs text-gray-600 shrink-0">{fmtDate(t.createdAt)}</span>
                 </div>
-                <div className="text-xs text-gray-500 mb-3">
-                  Admin PIN: <span className="text-gray-400 font-mono">{t.adminPin}</span>
+                <div className="text-xs text-gray-500 mb-3 break-all">
+                  Organisers: <span className="text-gray-400">{t.admins?.length ? t.admins.join(', ') : 'none'}</span>
                 </div>
                 <div className="flex gap-2">
                   <button
