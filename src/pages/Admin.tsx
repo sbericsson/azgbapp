@@ -1,10 +1,12 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { shareOrCopy, copyText } from '../lib/share';
 import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
   createCourse, listCourses, updateCourse, deleteCourse,
   createGroup, updateGroup, deleteGroupWithScores, listGroupsByRound, inviteScorer,
+  groupSignInLink, revokeGroupLinks, getServerConfig, organiserSignInLink, type SignInLink,
   createRound, listRounds, deleteRound, updateRound,
   listAllScores, clearRoundScores,
 } from '../lib/data';
@@ -107,6 +109,23 @@ function OrganisersEditor({ tournamentId, initial, me }: { tournamentId: string;
   const [adding, setAdding] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyLink = async (email: string) => {
+    setError('');
+    try {
+      const link = await organiserSignInLink(tournamentId, email);
+      const text = `Golf Bender sign-in for ${email}: ${link.url}\n(or enter code ${link.code} in the app; works for 14 days)`;
+      if (await copyText(text)) {
+        setCopied(email);
+        setTimeout(() => setCopied((c) => (c === email ? null : c)), 2500);
+      } else {
+        setError(`Copy failed. Link: ${link.url}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not get a link.');
+    }
+  };
 
   useEffect(() => {
     getTournament(tournamentId).then((t) => { if (t?.admins) setAdmins(t.admins); }).catch(() => {});
@@ -128,19 +147,24 @@ function OrganisersEditor({ tournamentId, initial, me }: { tournamentId: string;
   return (
     <div className="flex flex-col gap-1.5 border-t border-gray-700 pt-3">
       <label className="text-gray-400 text-xs font-medium">Organisers</label>
-      <p className="text-gray-500 text-xs">These people can manage the tournament. They sign in with their email.</p>
+      <p className="text-gray-500 text-xs">These people can manage the tournament. Add their email, then copy their sign-in link and send it to them.</p>
       {admins.map((a) => (
         <div key={a} className="flex items-center justify-between bg-gray-700 rounded-lg px-3 py-2 text-sm">
           <span className="truncate">{a}{a === me ? ' (you)' : ''}</span>
-          {a !== me && (
-            <button
-              onClick={() => { if (window.confirm(`Remove ${a} as an organiser?`)) void save(admins.filter((x) => x !== a)); }}
-              disabled={saving}
-              className="text-red-400 text-xs ml-2"
-            >
-              Remove
+          <div className="flex items-center gap-3 ml-2 shrink-0">
+            <button onClick={() => copyLink(a)} className="text-green-400 text-xs">
+              {copied === a ? '✓ Copied' : 'Copy sign-in link'}
             </button>
-          )}
+            {a !== me && (
+              <button
+                onClick={() => { if (window.confirm(`Remove ${a} as an organiser?`)) void save(admins.filter((x) => x !== a)); }}
+                disabled={saving}
+                className="text-red-400 text-xs"
+              >
+                Remove
+              </button>
+            )}
+          </div>
         </div>
       ))}
       <div className="flex gap-2">
@@ -203,7 +227,11 @@ export function Admin() {
   const [expandedRound, setExpandedRound] = useState<string | null>(null);
   const [addingGroupToRound, setAddingGroupToRound] = useState<string | null>(null);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [copiedGroupId, setCopiedGroupId] = useState<string | null>(null);
+  const [linkState, setLinkState] = useState<{ groupId: string; state: 'working' | 'shared' | 'copied' | 'error'; code?: string; text?: string } | null>(null);
+  const [serverEmail, setServerEmail] = useState(false);
+  useEffect(() => {
+    getServerConfig().then((c) => setServerEmail(c.emailSignIn)).catch(() => {});
+  }, []);
 
   // Round form
   const [rName, setRName] = useState('');
@@ -464,6 +492,52 @@ export function Admin() {
       setPairingError('Could not save. Check your connection and try again.');
     } finally {
       setGSaving(false);
+    }
+  };
+
+  const signInMessage = (r: Round, g: Group, link: SignInLink) => {
+    const players = g.players.map((p) => p.name).join(', ');
+    return `🏌️ ${tournament?.name ?? 'Golf Tournament'} — ${r.name}\n` +
+      `You're keeping score for ${g.name}${players ? ` (${players})` : ''}.\n\n` +
+      `Tap to sign in: ${link.url}\n\n` +
+      `Using the app from your home screen? Open it and enter code ${link.code}.\n` +
+      `The link works for 14 days.\n\n` +
+      `Live results: ${window.location.origin}/results/${tId}`;
+  };
+
+  const shareGroupLink = async (r: Round, g: Group) => {
+    setLinkState({ groupId: g.id, state: 'working' });
+    try {
+      const link = await groupSignInLink(tId, g.id);
+      const result = await shareOrCopy(`${tournament?.name ?? 'Golf'} — ${g.name}`, signInMessage(r, g, link));
+      if (result === 'failed') setLinkState({ groupId: g.id, state: 'error', text: 'Could not share or copy. Use Copy link.' });
+      else if (result === 'cancelled') setLinkState(null);
+      else setLinkState({ groupId: g.id, state: result, code: link.code });
+    } catch (err) {
+      setLinkState({ groupId: g.id, state: 'error', text: err instanceof Error ? err.message : 'Could not get a link.' });
+    }
+  };
+
+  const copyGroupLink = async (g: Group) => {
+    setLinkState({ groupId: g.id, state: 'working' });
+    try {
+      const link = await groupSignInLink(tId, g.id);
+      const ok = await copyText(link.url);
+      setLinkState(ok
+        ? { groupId: g.id, state: 'copied', code: link.code }
+        : { groupId: g.id, state: 'error', text: `Copy failed. Link: ${link.url}` });
+    } catch (err) {
+      setLinkState({ groupId: g.id, state: 'error', text: err instanceof Error ? err.message : 'Could not get a link.' });
+    }
+  };
+
+  const resetGroupSignIn = async (g: Group) => {
+    if (!window.confirm(`Sign out every phone scoring for ${g.name} and cancel its links? Send a new link afterwards.`)) return;
+    try {
+      await revokeGroupLinks(tId, g.id);
+      window.alert(`${g.name}: phones signed out. Share a new link with the scorer.`);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : 'Could not reset sign-in.');
     }
   };
 
@@ -1179,7 +1253,7 @@ export function Admin() {
                         <input
                           type="email"
                           className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                          placeholder="Scorer email (gets the sign-in link)"
+                          placeholder="Scorer email (optional)"
                           value={gEmail}
                           onChange={(e) => { setGEmail(e.target.value); setPairingError(''); }}
                           autoCapitalize="none"
@@ -1212,10 +1286,16 @@ export function Admin() {
                             </div>
                           );
                         })}
+                        <button
+                          onClick={() => resetGroupSignIn(g)}
+                          className="self-start text-yellow-400 text-xs font-medium"
+                        >
+                          Sign out this group's phones…
+                        </button>
                         <div className="flex gap-2 mt-1">
                           <button
                             onClick={() => saveEdit(r.id, g)}
-                            disabled={gSaving || !gName.trim() || !gEmail.trim()}
+                            disabled={gSaving || !gName.trim()}
                             className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                           >
                             {gSaving ? 'Saving…' : 'Save'}
@@ -1237,7 +1317,7 @@ export function Admin() {
                               <p className="font-medium text-sm">{g.name}</p>
                             </div>
                             <p className="text-gray-400 text-xs break-all">
-                              Scorer: {g.scorerEmail ?? <span className="text-yellow-500">none yet (Edit to add)</span>}
+                              Scorer: {g.scorerEmail ?? 'whoever opens the shared link'}
                             </p>
                             <div className="flex flex-col gap-0.5 mt-1">
                               {g.players.map((p) => {
@@ -1283,65 +1363,40 @@ export function Admin() {
                             </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-3 border-t border-gray-600 pt-2">
-                          {(() => {
-                            const players = g.players.map((p) => p.name).join(', ');
-                            const msg =
-                              `🏌️ ${tournament?.name ?? 'Golf Tournament'}\n` +
-                              `Round: ${r.name}\n` +
-                              `Group: ${g.name}\n` +
-                              `Players: ${players}\n\n` +
-                              `Tournament code: ${tId}\n` +
-                              (g.scorerEmail ? `Scorer: ${g.scorerEmail} (check your email for the sign-in link)\n` : '') +
-                              `\nLive results: ${window.location.origin}/results/${tId}`;
-                            return (
-                              <>
-                                {g.scorerEmail && (
-                                  <button
-                                    onClick={() => sendInvite(g)}
-                                    disabled={invite?.groupId === g.id && invite.state === 'sending'}
-                                    className="flex items-center gap-1 text-green-400 text-xs font-medium active:text-green-200 disabled:opacity-50"
-                                  >
-                                    {invite?.groupId === g.id
-                                      ? invite.state === 'sending' ? 'Sending…'
-                                        : invite.state === 'sent' ? '✓ Link sent'
-                                        : 'Retry link'
-                                      : '✉️ Send sign-in link'}
-                                  </button>
-                                )}
-                                <a
-                                  href={`sms:?body=${encodeURIComponent(msg)}`}
-                                  className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
-                                >
-                                  💬 Text
-                                </a>
-                                {typeof navigator.share === 'function' && (
-                                  <button
-                                    onClick={async () => {
-                                      try {
-                                        await navigator.share({ title: `${tournament?.name ?? 'Golf Tournament'} — ${g.name}`, text: msg });
-                                      } catch {
-                                        // user cancelled or API failed — silent
-                                      }
-                                    }}
-                                    className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
-                                  >
-                                    📤 Share
-                                  </button>
-                                )}
-                                <button
-                                  onClick={async () => {
-                                    await navigator.clipboard.writeText(msg);
-                                    setCopiedGroupId(g.id);
-                                    setTimeout(() => setCopiedGroupId((id) => id === g.id ? null : id), 2000);
-                                  }}
-                                  className="flex items-center gap-1 text-xs font-medium active:text-gray-200 text-gray-400"
-                                >
-                                  {copiedGroupId === g.id ? <span className="text-green-400">✓ Copied!</span> : '📋 Copy'}
-                                </button>
-                              </>
-                            );
-                          })()}
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-gray-600 pt-2">
+                          <button
+                            onClick={() => shareGroupLink(r, g)}
+                            disabled={linkState?.groupId === g.id && linkState.state === 'working'}
+                            className="flex items-center gap-1 text-green-400 text-xs font-medium active:text-green-200 disabled:opacity-50"
+                          >
+                            {linkState?.groupId === g.id && linkState.state === 'working' ? 'Getting link…' : '📤 Share sign-in link'}
+                          </button>
+                          <button
+                            onClick={() => copyGroupLink(g)}
+                            className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200"
+                          >
+                            📋 Copy link
+                          </button>
+                          {serverEmail && g.scorerEmail && (
+                            <button
+                              onClick={() => sendInvite(g)}
+                              disabled={invite?.groupId === g.id && invite.state === 'sending'}
+                              className="flex items-center gap-1 text-gray-400 text-xs font-medium active:text-gray-200 disabled:opacity-50"
+                            >
+                              {invite?.groupId === g.id
+                                ? invite.state === 'sending' ? 'Sending…'
+                                  : invite.state === 'sent' ? '✓ Emailed'
+                                  : 'Retry email'
+                                : '✉️ Email link'}
+                            </button>
+                          )}
+                          {linkState?.groupId === g.id && linkState.state !== 'working' && (
+                            <p className={`w-full text-xs ${linkState.state === 'error' ? 'text-red-400' : 'text-green-400'}`}>
+                              {linkState.state === 'error'
+                                ? linkState.text
+                                : `${linkState.state === 'copied' ? 'Copied.' : 'Shared.'} Code ${linkState.code} works in the home-screen app; link and code last 14 days.`}
+                            </p>
+                          )}
                         </div>
                       </div>
                     );
@@ -1359,7 +1414,7 @@ export function Admin() {
                       <input
                         type="email"
                         className="bg-gray-600 rounded-lg px-3 py-2 text-white placeholder-gray-400 text-sm"
-                        placeholder="Scorer email (gets the sign-in link)"
+                        placeholder="Scorer email (optional)"
                         value={gEmail}
                         onChange={(e) => { setGEmail(e.target.value); setPairingError(''); }}
                         autoCapitalize="none"
@@ -1395,7 +1450,7 @@ export function Admin() {
                       <div className="flex gap-2 mt-1">
                         <button
                           onClick={() => savePairing(r.id)}
-                          disabled={gSaving || !gName.trim() || !gEmail.trim()}
+                          disabled={gSaving || !gName.trim()}
                           className="flex-1 h-10 bg-green-600 rounded-lg font-bold text-sm disabled:opacity-40"
                         >
                           {gSaving ? 'Saving…' : 'Save'}

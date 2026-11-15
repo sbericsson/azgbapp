@@ -25,7 +25,7 @@ export function TournamentPicker() {
       <header className="bg-gray-900 px-4 py-4 flex items-center justify-between border-b border-gray-700">
         <div>
           <h1 className="font-bold">Your tournaments</h1>
-          <p className="text-gray-400 text-xs">{email}</p>
+          {email && <p className="text-gray-400 text-xs">{email}</p>}
         </div>
         <button onClick={logout} className="text-gray-400 text-sm">Logout</button>
       </header>
@@ -34,7 +34,7 @@ export function TournamentPicker() {
         {tournaments?.length === 0 && (
           <div className="text-center py-10">
             <p className="text-gray-300">You're not set up for any tournament yet.</p>
-            <p className="text-gray-500 text-sm mt-2">Ask your organiser to add {email} as the scorer for your group, or create your own.</p>
+            <p className="text-gray-500 text-sm mt-2">Ask your organiser for your group's sign-in link.</p>
           </div>
         )}
         {tournaments?.map((t) => (

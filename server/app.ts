@@ -5,9 +5,10 @@ import { streamSSE } from 'hono/streaming';
 import { randomInt } from 'node:crypto';
 import type { DB } from './db';
 import {
-  SESSION_COOKIE, SESSION_TTL_MS, SELF_LINK_TTL_MS, INVITE_LINK_TTL_MS,
-  normalizeEmail, issueLogin, verifyToken, verifyCode, createSession, sessionEmail, deleteSession,
-  RateLimiter, signInMail, type Mailer,
+  SESSION_COOKIE, SESSION_TTL_MS, SELF_LINK_TTL_MS,
+  normalizeEmail, issueEmailLogin, issueSharedLogin, verifyToken, verifyCode, verifySharedCode,
+  createSession, sessionInfo, setSessionEmail, addGrant, copyGrants, revokeGroupAccess, deleteSession,
+  RateLimiter, signInMail, type Mailer, type LoginTarget, type SessionInfo,
 } from './auth';
 import { ChangeFeed } from './events';
 import {
@@ -31,6 +32,7 @@ export interface AppConfig {
 }
 
 interface Viewer {
+  session: SessionInfo | null;
   email: string | null;
   appAdmin: boolean;
 }
@@ -62,7 +64,11 @@ class HttpError extends Error {
   }
 }
 
-export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new ChangeFeed()) {
+/**
+ * `mailer` is null when no SMTP account is configured: organisers then share
+ * sign-in links themselves (copy, text) and email sign-in is switched off.
+ */
+export function createApp(db: DB, mailer: Mailer | null, config: AppConfig, feed = new ChangeFeed()) {
   const app = new Hono<Env>().basePath('/api');
 
   const requestLimiter = new RateLimiter(5, 60 * 60 * 1000); // links per email per hour
@@ -80,10 +86,27 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     return c.get('viewer');
   }
 
+  /** Signed in with an email (organisers, app admins, scorers with an email). */
   function requireSignedIn(c: Context<Env>): string {
-    const { email } = viewerOf(c);
-    if (!email) throw new HttpError(401, 'Sign in first');
+    const { email, session } = viewerOf(c);
+    if (!email) throw new HttpError(session ? 403 : 401, session ? 'Organisers only' : 'Sign in first');
     return email;
+  }
+
+  /** Any signed-in phone, including a scorer signed in by a shared group link. */
+  function requireSession(c: Context<Env>): SessionInfo {
+    const { session } = viewerOf(c);
+    if (!session) throw new HttpError(401, 'Sign in first');
+    return session;
+  }
+
+  function isScorer(v: Viewer, tournamentId: string, groupId: string): boolean {
+    if (v.session?.grants.some((g) => g.tournamentId === tournamentId && g.groupId === groupId)) return true;
+    return !!v.email && isScorerOf(db, v.email, tournamentId, groupId);
+  }
+
+  function linkUrl(token: string): string {
+    return `${config.appUrl.replace(/\/$/, '')}/signin?token=${encodeURIComponent(token)}`;
   }
 
   function tournamentOr404(id: string) {
@@ -119,34 +142,71 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     return id;
   }
 
-  async function sendLogin(email: string, ttlMs: number, tournamentId: string | null, extra: { tournamentName?: string; groupName?: string; invitedBy?: string }) {
-    const { token, code } = issueLogin(db, email, ttlMs, tournamentId);
-    const link = `${config.appUrl.replace(/\/$/, '')}/signin?token=${encodeURIComponent(token)}`;
-    await mailer(signInMail({
-      to: email,
-      link,
-      code,
-      expiresIn: ttlMs >= 24 * 60 * 60 * 1000 ? `${Math.round(ttlMs / 86_400_000)} days` : `${Math.round(ttlMs / 3_600_000)} hours`,
-      ...extra,
-    }));
+  const expiresIn = (ttlMs: number) =>
+    ttlMs >= 24 * 60 * 60 * 1000 ? `${Math.round(ttlMs / 86_400_000)} days` : `${Math.round(ttlMs / 3_600_000)} hours`;
+
+  /** Email a link the person asked for (only when SMTP is configured). */
+  async function sendEmailLogin(email: string, tournamentId: string | null) {
+    if (!mailer) throw new HttpError(400, 'Email sign-in is not set up. Ask your organiser for a sign-in link.');
+    const { token, code } = issueEmailLogin(db, email, SELF_LINK_TTL_MS, tournamentId);
+    await mailer(signInMail({ to: email, link: linkUrl(token), code, expiresIn: expiresIn(SELF_LINK_TTL_MS) }));
   }
 
-  function me(email: string | null) {
-    if (!email) return { email: null, appAdmin: false, admin: [], groups: [] };
-    const adminOf = (db.prepare('SELECT tournament_id FROM tournament_admins WHERE email = ?').all(email) as { tournament_id: string }[])
-      .map((r) => r.tournament_id);
-    return { email, appAdmin: isAppAdmin(email), admin: adminOf, groups: scorerGroups(db, email) };
+  function shareLink(target: LoginTarget) {
+    const issued = issueSharedLogin(db, target);
+    return { url: linkUrl(issued.token), code: issued.code, expiresAt: issued.expiresAt };
   }
 
-  function signIn(c: Context<Env>, email: string) {
-    const sid = createSession(db, email);
-    setCookie(c, SESSION_COOKIE, sid, {
-      httpOnly: true,
-      secure: config.secureCookies,
-      sameSite: 'Lax',
-      path: '/',
-      maxAge: Math.floor(SESSION_TTL_MS / 1000),
-    });
+  function me(v: Viewer) {
+    const email = v.email;
+    const adminOf = email
+      ? (db.prepare('SELECT tournament_id FROM tournament_admins WHERE email = ?').all(email) as { tournament_id: string }[])
+        .map((r) => r.tournament_id)
+      : [];
+    const groups = email ? scorerGroups(db, email) : [];
+    for (const g of v.session?.grants ?? []) {
+      if (groups.some((x) => x.tournamentId === g.tournamentId && x.id === g.groupId)) continue;
+      const d = getDoc(db, g.tournamentId, 'groups', g.groupId);
+      if (d) groups.push({ tournamentId: g.tournamentId, id: d.id, roundId: d.round_id, name: String((JSON.parse(d.data) as Json).name ?? '') });
+    }
+    return { email, appAdmin: isAppAdmin(email), signedIn: !!v.session, admin: adminOf, groups };
+  }
+
+  /**
+   * Apply a verified link to this phone. A group link adds that group to the
+   * phone's existing sign-in, so one phone can hold several groups (one per
+   * round). An email link signs the phone in as that person, keeping its groups.
+   */
+  function signIn(c: Context<Env>, target: LoginTarget): Viewer {
+    if (target.groupId && target.tournamentId && !getDoc(db, target.tournamentId, 'groups', target.groupId)) {
+      throw new HttpError(401, 'That group no longer exists. Ask your organiser for a new link.');
+    }
+    let session = viewerOf(c).session;
+    let sid: string | null = null;
+    if (target.email && session && session.email && session.email !== target.email) {
+      // A different person on this phone: new session, keep the group grants
+      sid = createSession(db, target.email);
+      const fresh = sessionInfo(db, sid)!;
+      copyGrants(db, session.hash, fresh.hash);
+      session = fresh;
+    } else if (!session) {
+      sid = createSession(db, target.email);
+      session = sessionInfo(db, sid)!;
+    } else if (target.email && !session.email) {
+      setSessionEmail(db, session.hash, target.email);
+    }
+    if (target.groupId && target.tournamentId) addGrant(db, session.hash, target.tournamentId, target.groupId);
+    if (sid) {
+      setCookie(c, SESSION_COOKIE, sid, {
+        httpOnly: true,
+        secure: config.secureCookies,
+        sameSite: 'Lax',
+        path: '/',
+        maxAge: Math.floor(SESSION_TTL_MS / 1000),
+      });
+    }
+    const updated = sessionInfo(db, sid ?? getCookie(c, SESSION_COOKIE))!;
+    return { session: updated, email: updated.email, appAdmin: isAppAdmin(updated.email) };
   }
 
   // ── Middleware ─────────────────────────────────────────────────────────────
@@ -154,8 +214,8 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
   app.use('*', bodyLimit({ maxSize: 2 * 1024 * 1024, onError: (c) => c.json({ error: 'Request too large' }, 413) }));
 
   app.use('*', async (c, next) => {
-    const email = sessionEmail(db, getCookie(c, SESSION_COOKIE));
-    c.set('viewer', { email, appAdmin: isAppAdmin(email) });
+    const session = sessionInfo(db, getCookie(c, SESSION_COOKIE));
+    c.set('viewer', { session, email: session?.email ?? null, appAdmin: isAppAdmin(session?.email ?? null) });
     // Reject cross-site writes: browsers send Origin on POST/PUT/PATCH/DELETE
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
       const origin = c.req.header('origin');
@@ -178,10 +238,12 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
 
   // ── Auth ───────────────────────────────────────────────────────────────────
 
-  app.get('/auth/me', (c) => c.json(me(viewerOf(c).email)));
+  app.get('/config', (c) => c.json({ emailSignIn: !!mailer }));
+
+  app.get('/auth/me', (c) => c.json(me(viewerOf(c))));
 
   /** For nginx auth_request: 204 when signed in (guards the API proxies, R15). */
-  app.get('/auth/check', (c) => (viewerOf(c).email ? c.body(null, 204) : c.body(null, 401)));
+  app.get('/auth/check', (c) => (viewerOf(c).session ? c.body(null, 204) : c.body(null, 401)));
 
   app.post('/auth/request', async (c) => {
     const body = await readJson(c);
@@ -193,26 +255,36 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     }
     const allowed = isAppAdmin(email) || isKnownEmail(db, email) || (purpose === 'create' && config.allowSelfService);
     // Same answer either way, so the form does not reveal who is registered
+    if (!mailer) throw new HttpError(400, 'Email sign-in is not set up. Ask your organiser for a sign-in link.');
     if (allowed) {
       const tournamentId = typeof body.tournamentId === 'string' && ID_RE.test(body.tournamentId) ? body.tournamentId : null;
-      await sendLogin(email, SELF_LINK_TTL_MS, tournamentId, {});
+      await sendEmailLogin(email, tournamentId);
     }
     return c.json({ ok: true });
   });
 
   app.post('/auth/verify', async (c) => {
     const body = await readJson(c);
-    let result = null;
+    let result: LoginTarget | null = null;
     if (typeof body.token === 'string') {
       result = verifyToken(db, body.token);
-    } else {
-      const email = normalizeEmail(body.email);
+    } else if (typeof body.code === 'string') {
       if (!codeLimiter.allow(clientIp(c))) throw new HttpError(429, 'Too many attempts. Wait 15 minutes.');
-      if (email && typeof body.code === 'string') result = verifyCode(db, email, body.code.trim());
+      const email = normalizeEmail(body.email);
+      result = email ? verifyCode(db, email, body.code.trim()) : verifySharedCode(db, body.code);
     }
-    if (!result) throw new HttpError(401, 'That link or code is invalid or has expired. Request a new one.');
-    signIn(c, result.email);
-    return c.json({ ...me(result.email), tournamentId: result.tournamentId });
+    if (!result) throw new HttpError(401, 'That link or code is invalid or has expired. Ask for a new one.');
+    const viewer = signIn(c, result);
+    return c.json({ ...me(viewer), tournamentId: result.tournamentId });
+  });
+
+  /** App admins: a sign-in link for anyone (e.g. a new organiser), to copy and send. */
+  app.post('/auth/link', async (c) => {
+    requireAppAdmin(c);
+    const body = await readJson(c);
+    const email = normalizeEmail(body.email);
+    if (!email) throw new HttpError(400, 'Enter a valid email address');
+    return c.json(shareLink({ email, tournamentId: null, groupId: null }));
   });
 
   app.post('/auth/logout', (c) => {
@@ -271,6 +343,16 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     if (list.length === 0) throw new HttpError(400, 'A tournament needs at least one organiser');
     setAdmins(db, row.id, list);
     return c.json({ admins: getAdmins(db, row.id) });
+  });
+
+  /** A sign-in link for one of this tournament's organisers, to copy and send. */
+  app.post('/tournaments/:t/admins/link', async (c) => {
+    const row = tournamentOr404(c.req.param('t'));
+    requireAdmin(c, row.id);
+    const body = await readJson(c);
+    const email = normalizeEmail(body.email);
+    if (!email || !getAdmins(db, row.id).includes(email)) throw new HttpError(400, 'Add them as an organiser first');
+    return c.json(shareLink({ email, tournamentId: row.id, groupId: null }));
   });
 
   app.post('/tournaments/:t/archive', async (c) => {
@@ -368,9 +450,9 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     const v = viewerOf(c);
     if (!canAdmin(v, row.id)) {
       // A group's scorer may rename their group, nothing else
-      const email = requireSignedIn(c);
+      requireSession(c);
       const onlyName = Object.keys(body).length === 1 && typeof body.name === 'string' && body.name.trim().length > 0 && body.name.length <= 60;
-      if (!(coll === 'groups' && onlyName && isScorerOf(db, email, row.id, d.id))) throw new HttpError(403, 'Organisers only');
+      if (!(coll === 'groups' && onlyName && isScorer(v, row.id, d.id))) throw new HttpError(403, 'Organisers only');
     }
     patchDoc(db, row.id, coll, d, body);
     const updated = getDoc(db, row.id, coll, d.id)!;
@@ -390,22 +472,54 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     return c.json({ ok: true });
   });
 
-  /** Email the group's scorer a sign-in link that works for 7 days. */
+  function groupOr404(tournamentId: string, groupId: string) {
+    const d = getDoc(db, tournamentId, 'groups', groupId);
+    if (!d) throw new HttpError(404, 'Group not found');
+    return d;
+  }
+
+  /**
+   * A sign-in link for the group's scorer, to text or email (14 days). It
+   * signs a phone in to this group; with a scorer email on the group it also
+   * signs them in as that person, covering every round they score.
+   */
+  app.post('/tournaments/:t/groups/:id/link', (c) => {
+    const row = tournamentOr404(c.req.param('t'));
+    requireAdmin(c, row.id);
+    const d = groupOr404(row.id, c.req.param('id'));
+    return c.json(shareLink({ email: d.scorer_email, tournamentId: row.id, groupId: d.id }));
+  });
+
+  /** Email the same link to the group's scorer (needs SMTP and a scorer email). */
   app.post('/tournaments/:t/groups/:id/invite', async (c) => {
     const row = tournamentOr404(c.req.param('t'));
     const email = requireAdmin(c, row.id);
-    const d = getDoc(db, row.id, 'groups', c.req.param('id'));
-    if (!d) throw new HttpError(404, 'Group not found');
+    const d = groupOr404(row.id, c.req.param('id'));
+    if (!mailer) throw new HttpError(400, 'Email is not set up on the server. Share the link instead.');
     if (!d.scorer_email) throw new HttpError(400, 'Add the scorer’s email to the group first');
     if (!inviteLimiter.allow(row.id)) throw new HttpError(429, 'Too many invitations sent. Try again later.');
     const t = JSON.parse(row.data) as Json;
     const g = JSON.parse(d.data) as Json;
-    await sendLogin(d.scorer_email, INVITE_LINK_TTL_MS, row.id, {
+    const link = shareLink({ email: d.scorer_email, tournamentId: row.id, groupId: d.id });
+    await mailer(signInMail({
+      to: d.scorer_email,
+      link: link.url,
+      code: link.code,
+      expiresIn: '14 days',
       tournamentName: String(t.name ?? row.id),
       groupName: String(g.name ?? 'your group'),
       invitedBy: email,
-    });
+    }));
     return c.json({ sentTo: d.scorer_email });
+  });
+
+  /** Void the group's links and sign out every phone that joined through one. */
+  app.post('/tournaments/:t/groups/:id/revoke', (c) => {
+    const row = tournamentOr404(c.req.param('t'));
+    requireAdmin(c, row.id);
+    const d = groupOr404(row.id, c.req.param('id'));
+    revokeGroupAccess(db, row.id, d.id);
+    return c.json({ ok: true });
   });
 
   // ── Scores ─────────────────────────────────────────────────────────────────
@@ -425,12 +539,12 @@ export function createApp(db: DB, mailer: Mailer, config: AppConfig, feed = new 
     const row = tournamentOr404(c.req.param('t'));
     const roundId = c.req.param('r');
     const groupId = c.req.param('g');
-    const email = requireSignedIn(c);
+    requireSession(c);
     const round = getDoc(db, row.id, 'rounds', roundId);
     const group = getDoc(db, row.id, 'groups', groupId);
     if (!round || !group || group.round_id !== roundId) throw new HttpError(404, 'Round or group not found');
     if (!canAdmin(viewerOf(c), row.id)) {
-      if (!isScorerOf(db, email, row.id, groupId)) throw new HttpError(403, 'Only this group’s scorer or an organiser can enter scores');
+      if (!isScorer(viewerOf(c), row.id, groupId)) throw new HttpError(403, 'Only this group’s scorer or an organiser can enter scores');
       if ((JSON.parse(round.data) as Json).status === 'complete') throw new HttpError(403, 'This round is complete. Ask the organiser to change a score.');
     }
     const body = await readJson(c);

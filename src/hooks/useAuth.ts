@@ -12,7 +12,9 @@ import type { Tournament } from '../types/tournament';
 
 /**
  * Who is signed in (R13). The session is an httpOnly cookie set by the server
- * after an emailed link or code; it lasts 60 days from last use. The server's
+ * after a sign-in link or code (emailed, or shared by an organiser); it lasts
+ * 60 days from last use. A phone signed in by a group's shared link has no
+ * email, only that group (and any other group links opened on it). The server's
  * answer to /auth/me (organiser of which tournaments, scorer of which groups)
  * is cached on the phone so the app opens offline. The tournament being
  * viewed is remembered per device.
@@ -26,6 +28,8 @@ interface AuthState {
 }
 
 export interface AuthContextValue extends AuthState {
+  /** Signed in by email or by a shared group link */
+  signedIn: boolean;
   email: string | null;
   isAppAdmin: boolean;
   /** Organiser of the current tournament (or app admin inside it) */
@@ -76,6 +80,7 @@ export const AuthContext = createContext<AuthContextValue>({
   tournamentId: null,
   tournament: null,
   loading: false,
+  signedIn: false,
   email: null,
   isAppAdmin: false,
   isAdmin: false,
@@ -97,7 +102,7 @@ export function useAuthProvider(): AuthContextValue {
   const [state, setState] = useState<AuthState>(() => {
     const me = readJson<Me>(ME_KEY);
     return {
-      me: me?.email ? me : null,
+      me: me?.signedIn ? me : null,
       tournamentId: readJson<string>(TOURNAMENT_KEY),
       tournament: null,
       loading: true,
@@ -120,16 +125,16 @@ export function useAuthProvider(): AuthContextValue {
 
   const applyMe = useCallback(async (me: Me | null, preferred: string | null, gen: number) => {
     if (gen !== generation.current) return;
-    writeJson(ME_KEY, me?.email ? me : null);
+    writeJson(ME_KEY, me?.signedIn ? me : null);
     const ids = tournamentIdsOf(me);
     let tournamentId = preferred;
     // Only one tournament to choose from: open it
-    if (!tournamentId && me?.email && !me.appAdmin && ids.length === 1) tournamentId = ids[0];
-    if (!me?.email) tournamentId = null;
+    if (!tournamentId && me?.signedIn && !me.appAdmin && ids.length === 1) tournamentId = ids[0];
+    if (!me?.signedIn) tournamentId = null;
     writeJson(TOURNAMENT_KEY, tournamentId);
     const tournament = await loadTournament(tournamentId).catch(() => null);
     if (gen !== generation.current) return;
-    setState({ me: me?.email ? me : null, tournamentId, tournament, loading: false });
+    setState({ me: me?.signedIn ? me : null, tournamentId, tournament, loading: false });
   }, [loadTournament]);
 
   // Restore on start: ask the server who we are; offline, trust the cached answer
@@ -200,6 +205,7 @@ export function useAuthProvider(): AuthContextValue {
     const isAdmin = !!state.tournamentId && (isAppAdmin || !!me?.admin.includes(state.tournamentId));
     const scorerGroups = me?.groups.filter((g) => g.tournamentId === state.tournamentId) ?? [];
     return {
+      signedIn: !!me?.signedIn,
       email: me?.email ?? null,
       isAppAdmin,
       isAdmin,

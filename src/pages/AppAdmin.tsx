@@ -8,7 +8,8 @@ import {
   getTournament,
 } from '../lib/data';
 import type { Tournament } from '../types/tournament';
-import { importTournament, parseBackup } from '../lib/data';
+import { importTournament, parseBackup, appAdminSignInLink } from '../lib/data';
+import { copyText } from '../lib/share';
 
 function fmtDate(ts: number): string {
   return new Date(ts).toLocaleDateString('en-US', {
@@ -38,6 +39,20 @@ export function AppAdmin() {
   const [showArchived, setShowArchived] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState('');
   const restoreInputRef = useRef<HTMLInputElement>(null);
+
+  // Sign-in link for anyone (new organisers)
+  const [linkEmail, setLinkEmail] = useState('');
+  const [linkMsg, setLinkMsg] = useState('');
+  const makeLink = async () => {
+    setLinkMsg('');
+    try {
+      const link = await appAdminSignInLink(linkEmail.trim());
+      const text = `Golf Bender sign-in for ${linkEmail.trim()}: ${link.url}\n(or enter code ${link.code} in the app; works for 14 days)`;
+      setLinkMsg((await copyText(text)) ? `Copied a sign-in link for ${linkEmail.trim()} (code ${link.code}). Paste it into a text or email.` : `Link: ${link.url}  Code: ${link.code}`);
+    } catch (err) {
+      setLinkMsg(err instanceof Error ? err.message : 'Could not create a link.');
+    }
+  };
 
   useEffect(() => {
     listTournaments()
@@ -157,6 +172,30 @@ export function AppAdmin() {
           }}
         />
         {restoreMsg && <p className="text-xs text-gray-400 text-center">{restoreMsg}</p>}
+
+        <div className="bg-gray-900 rounded-2xl p-4 space-y-2 border border-gray-800">
+          <p className="text-sm font-semibold text-gray-300">Sign-in link for someone</p>
+          <p className="text-xs text-gray-500">For a new organiser: create their tournament (or add them under its Organisers), then send them this.</p>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              className="flex-1 min-w-0 bg-gray-800 rounded-lg px-3 py-2 text-white text-sm border border-gray-700 focus:border-green-500 focus:outline-none"
+              placeholder="their@email.com"
+              value={linkEmail}
+              onChange={(e) => { setLinkEmail(e.target.value); setLinkMsg(''); }}
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+            <button
+              onClick={makeLink}
+              disabled={!linkEmail.includes('@')}
+              className="px-4 rounded-lg bg-green-700 text-white text-sm font-medium disabled:opacity-40"
+            >
+              Copy link
+            </button>
+          </div>
+          {linkMsg && <p className="text-xs text-gray-400 break-all">{linkMsg}</p>}
+        </div>
 
         {/* Create form */}
         {showCreate && (

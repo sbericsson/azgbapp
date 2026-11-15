@@ -14,10 +14,11 @@ import { normalizeEmail, type Mailer } from './auth';
  *   DB_PATH              SQLite file, default ./data/azgb.db
  *   APP_URL              public origin used in emailed links
  *   APP_ADMIN_EMAILS     comma-separated emails that administer everything
- *   SMTP_URL             e.g. smtps://user:pass@smtp.example.com:465
+ *   SMTP_URL             optional, e.g. smtps://user:pass@smtp.example.com:465. Without it
+ *                        organisers copy and send sign-in links themselves
  *   MAIL_FROM            e.g. "Golf Bender <golf@example.com>"
  *   ALLOW_SELF_SERVICE   "false" to stop anyone creating tournaments at /create
- *   DEV_LOG_LINKS        "1" to print sign-in emails to the console instead of sending
+ *   DEV_LOG_LINKS        "1" (with no SMTP_URL) prints sign-in emails to the console
  */
 
 const env = process.env;
@@ -28,19 +29,18 @@ const appUrl = env.APP_URL ?? `http://localhost:5173`;
 mkdirSync(dirname(dbPath), { recursive: true });
 const db = openDb(dbPath);
 
-let mailer: Mailer;
-if (env.DEV_LOG_LINKS === '1' || !env.SMTP_URL) {
-  if (!env.SMTP_URL && env.DEV_LOG_LINKS !== '1') {
-    console.warn('SMTP_URL is not set: sign-in emails are printed here instead of sent.');
-  }
-  mailer = async (mail) => {
-    console.log(`\n── Email to ${mail.to}: ${mail.subject}\n${mail.text}\n`);
-  };
-} else {
+// Email is optional: without SMTP, organisers copy and send sign-in links
+// themselves and the "email me a link" form is hidden.
+let mailer: Mailer | null = null;
+if (env.SMTP_URL) {
   const transport = nodemailer.createTransport(env.SMTP_URL);
   const from = env.MAIL_FROM ?? 'Golf Bender <no-reply@localhost>';
   mailer = async (mail) => {
     await transport.sendMail({ from, ...mail });
+  };
+} else if (env.DEV_LOG_LINKS === '1') {
+  mailer = async (mail) => {
+    console.log(`\n── Email to ${mail.to}: ${mail.subject}\n${mail.text}\n`);
   };
 }
 

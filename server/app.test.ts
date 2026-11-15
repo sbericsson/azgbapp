@@ -54,6 +54,15 @@ function tokenFrom(mail: Mail): string {
   return decodeURIComponent(m[1]);
 }
 
+function tokenFromUrl(url: string): string {
+  return decodeURIComponent(url.split('token=')[1]);
+}
+
+function cookieOf(res: { res: Response }, previous: Session = {}): Session {
+  const set = res.res.headers.get('set-cookie');
+  return set ? { cookie: set.split(';')[0] } : previous;
+}
+
 function codeFrom(mail: Mail): string {
   const m = mail.text.match(/code in the app: (\d{6})/);
   if (!m) throw new Error('no code in mail');
@@ -192,7 +201,7 @@ describe('organisers', () => {
     expect(res.status).toBe(200);
     expect(lastMail().to).toBe('scorer@example.com');
     expect(lastMail().text).toContain('Alpha');
-    expect(lastMail().text).toContain('7 days');
+    expect(lastMail().text).toContain('14 days');
   });
 
   it('deleting a round removes its groups and scores', async () => {
@@ -287,5 +296,119 @@ describe('app admin', () => {
     const rival = await signIn('rival@example.com', 'create');
     expect((await call('GET', '/tournaments', undefined, rival)).json).toEqual([]);
     expect((await call('POST', '/import', { backup: {} }, rival)).status).toBe(403);
+  });
+});
+
+describe('shared sign-in links (organiser copies and texts them)', () => {
+  async function groupLink(t: string, groupId: string, org: Session) {
+    const res = await call('POST', `/tournaments/${t}/groups/${groupId}/link`, {}, org);
+    expect(res.status).toBe(200);
+    return res.json as unknown as { url: string; code: string; expiresAt: number };
+  }
+
+  it('signs a phone in to the group without any email', async () => {
+    const { t, org } = await setup();
+    await call('PATCH', `/tournaments/${t}/groups/g1`, { scorerEmail: null }, org);
+    const link = await groupLink(t, 'g1', org);
+    expect(link.url).toMatch(/^https:\/\/golf\.test\/signin\?token=/);
+    expect(link.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    const res = await call('POST', '/auth/verify', { token: tokenFromUrl(link.url) });
+    expect(res.status).toBe(200);
+    expect(res.json.email).toBeNull();
+    expect(res.json.groups).toEqual([{ tournamentId: t, id: 'g1', roundId: 'r1', name: 'Alpha' }]);
+    const phone = cookieOf(res);
+    expect((await call('PUT', `/tournaments/${t}/rounds/r1/scores/g1`, { holeMap: { 0: hole(3) } }, phone)).status).toBe(200);
+    expect((await call('PUT', `/tournaments/${t}/rounds/r1/scores/g2`, { holeMap: { 0: hole(3) } }, phone)).status).toBe(403);
+    expect((await call('GET', '/auth/check', undefined, phone)).status).toBe(204);
+  });
+
+  it('a group-only phone cannot organise, create tournaments or read the roster', async () => {
+    const { t, org } = await setup();
+    await call('PATCH', `/tournaments/${t}/groups/g1`, { scorerEmail: null }, org);
+    const phone = cookieOf(await call('POST', '/auth/verify', { token: tokenFromUrl((await groupLink(t, 'g1', org)).url) }));
+    expect((await call('POST', '/tournaments', { name: 'x' }, phone)).status).toBe(403);
+    expect((await call('GET', `/tournaments/${t}/golfers`, undefined, phone)).status).toBe(403);
+    expect((await call('POST', `/tournaments/${t}/groups/g1/link`, {}, phone)).status).toBe(403);
+    expect((await call('PATCH', `/tournaments/${t}/groups/g1`, { name: 'Renamed' }, phone)).status).toBe(200);
+  });
+
+  it('the code alone works (home-screen app), with or without the dash', async () => {
+    const { t, org } = await setup();
+    const link = await groupLink(t, 'g1', org);
+    const res = await call('POST', '/auth/verify', { code: link.code.replace('-', '').toLowerCase() });
+    expect(res.status).toBe(200);
+    expect((await call('POST', '/auth/verify', { code: 'AAAA-AAAA' })).status).toBe(401);
+  });
+
+  it('a second link adds its group to the same phone', async () => {
+    const { t, org } = await setup();
+    await call('PATCH', `/tournaments/${t}/groups/g1`, { scorerEmail: null }, org);
+    await call('PATCH', `/tournaments/${t}/groups/g2`, { scorerEmail: null }, org);
+    const first = await call('POST', '/auth/verify', { token: tokenFromUrl((await groupLink(t, 'g1', org)).url) });
+    const phone = cookieOf(first);
+    const second = await call('POST', '/auth/verify', { token: tokenFromUrl((await groupLink(t, 'g2', org)).url) }, phone);
+    expect(second.res.headers.get('set-cookie')).toBeNull();
+    expect((second.json.groups as unknown[]).length).toBe(2);
+    expect((await call('PUT', `/tournaments/${t}/rounds/r1/scores/g2`, { holeMap: { 0: hole(3) } }, phone)).status).toBe(200);
+  });
+
+  it('a link for a group with a scorer email signs in as that person', async () => {
+    const { t, org } = await setup();
+    const res = await call('POST', '/auth/verify', { token: tokenFromUrl((await groupLink(t, 'g1', org)).url) });
+    expect(res.json.email).toBe('scorer@example.com');
+  });
+
+  it('resetting a group signs its phones out and voids its links', async () => {
+    const { t, org } = await setup();
+    await call('PATCH', `/tournaments/${t}/groups/g1`, { scorerEmail: null }, org);
+    const link = await groupLink(t, 'g1', org);
+    const phone = cookieOf(await call('POST', '/auth/verify', { token: tokenFromUrl(link.url) }));
+    expect((await call('POST', `/tournaments/${t}/groups/g1/revoke`, {}, org)).status).toBe(200);
+    expect((await call('PUT', `/tournaments/${t}/rounds/r1/scores/g1`, { holeMap: { 0: hole(3) } }, phone)).status).toBe(403);
+    expect((await call('POST', '/auth/verify', { token: tokenFromUrl(link.url) })).status).toBe(401);
+    expect((await call('POST', '/auth/verify', { code: link.code })).status).toBe(401);
+  });
+
+  it('a deleted group’s link stops working', async () => {
+    const { t, org } = await setup();
+    const link = await groupLink(t, 'g1', org);
+    await call('DELETE', `/tournaments/${t}/groups/g1`, undefined, org);
+    expect((await call('POST', '/auth/verify', { token: tokenFromUrl(link.url) })).status).toBe(401);
+  });
+
+  it('organisers get links for co-organisers on their list only; app admins for anyone', async () => {
+    const { t, org } = await setup();
+    expect((await call('POST', `/tournaments/${t}/admins/link`, { email: 'co@example.com' }, org)).status).toBe(400);
+    await call('PUT', `/tournaments/${t}/admins`, { emails: ['org@example.com', 'co@example.com'] }, org);
+    const link = (await call('POST', `/tournaments/${t}/admins/link`, { email: 'co@example.com' }, org)).json as unknown as { url: string };
+    const co = cookieOf(await call('POST', '/auth/verify', { token: tokenFromUrl(link.url) }));
+    expect((await call('PATCH', `/tournaments/${t}`, { name: 'Co-run' }, co)).status).toBe(200);
+    expect((await call('POST', '/auth/link', { email: 'new@example.com' }, org)).status).toBe(403);
+    const boss = await signIn(APP_ADMIN);
+    expect((await call('POST', '/auth/link', { email: 'new@example.com' }, boss)).status).toBe(200);
+  });
+});
+
+describe('without an email account on the server', () => {
+  it('turns email sign-in off; shared links still work', async () => {
+    const quiet = createApp(db, null, { appUrl: APP_URL, appAdminEmails: new Set([APP_ADMIN]), allowSelfService: true, secureCookies: true });
+    const q = async (method: string, path: string, body?: unknown, cookie?: string) => {
+      const res = await quiet.request(`/api${path}`, {
+        method,
+        headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      return { status: res.status, json: await res.json().catch(() => null), res };
+    };
+    expect((await q('GET', '/config')).json).toEqual({ emailSignIn: false });
+    expect((await q('POST', '/auth/request', { email: 'org@example.com', purpose: 'create' })).status).toBe(400);
+    // The first sign-in comes from the login-link command on the server
+    const { issueSharedLogin } = await import('./auth');
+    const { token } = issueSharedLogin(db, { email: APP_ADMIN, tournamentId: null, groupId: null });
+    const res = await q('POST', '/auth/verify', { token });
+    expect(res.status).toBe(200);
+    const cookie = res.res.headers.get('set-cookie')!.split(';')[0];
+    expect((await q('POST', '/tournaments', { name: 'No Mail Open' }, cookie)).status).toBe(201);
+    expect(mails).toHaveLength(0);
   });
 });

@@ -42,6 +42,8 @@ export interface ScorerGroupRef {
 export interface Me {
   email: string | null;
   appAdmin: boolean;
+  /** Signed in by email or by a shared group link */
+  signedIn: boolean;
   /** Tournament codes this person organises */
   admin: string[];
   /** Groups this person keeps score for */
@@ -52,6 +54,22 @@ export async function fetchMe(): Promise<Me> {
   return api<Me>('GET', '/auth/me');
 }
 
+export interface ServerConfig {
+  /** The server can email sign-in links (SMTP configured) */
+  emailSignIn: boolean;
+}
+
+export async function getServerConfig(): Promise<ServerConfig> {
+  return (await cachedGet<ServerConfig>('/config')).value;
+}
+
+/** A sign-in link to copy, text or email yourself, and its stand-alone code. */
+export interface SignInLink {
+  url: string;
+  code: string;
+  expiresAt: number;
+}
+
 export async function requestSignIn(email: string, opts: { purpose?: 'signin' | 'create'; tournamentId?: string } = {}): Promise<void> {
   await api('POST', '/auth/request', { email, purpose: opts.purpose ?? 'signin', tournamentId: opts.tournamentId });
 }
@@ -60,8 +78,14 @@ export async function verifySignInToken(token: string): Promise<Me & { tournamen
   return api('POST', '/auth/verify', { token });
 }
 
-export async function verifySignInCode(email: string, code: string): Promise<Me & { tournamentId: string | null }> {
-  return api('POST', '/auth/verify', { email, code });
+/** Email + 6-digit code from an emailed link, or the XXXX-XXXX code of a shared link alone. */
+export async function verifySignInCode(email: string | null, code: string): Promise<Me & { tournamentId: string | null }> {
+  return api('POST', '/auth/verify', email ? { email, code } : { code });
+}
+
+/** App admins: a sign-in link for anyone, e.g. a new organiser. */
+export async function appAdminSignInLink(email: string): Promise<SignInLink> {
+  return api('POST', '/auth/link', { email });
 }
 
 export async function signOut(): Promise<void> {
@@ -107,6 +131,11 @@ export async function updateTournament(id: string, data: Partial<Pick<Tournament
 
 export async function setTournamentAdmins(id: string, emails: string[]): Promise<string[]> {
   return (await api<{ admins: string[] }>('PUT', `${tPath(id)}/admins`, { emails })).admins;
+}
+
+/** A sign-in link for one of the tournament's organisers. */
+export async function organiserSignInLink(id: string, email: string): Promise<SignInLink> {
+  return api('POST', `${tPath(id)}/admins/link`, { email });
 }
 
 // ── Courses ────────────────────────────────────────────────────────────────────
@@ -178,9 +207,19 @@ export async function deleteGroupWithScores(t: string, _roundId: string, groupId
   await api('DELETE', cPath(t, 'groups', groupId));
 }
 
-/** Email the group's scorer a sign-in link (valid 7 days). Returns the address it went to. */
+/** A sign-in link for the group's scorer, to text or email (valid 14 days). */
+export async function groupSignInLink(t: string, groupId: string): Promise<SignInLink> {
+  return api('POST', `${cPath(t, 'groups', groupId)}/link`, {});
+}
+
+/** Email the group's scorer the sign-in link (server must have email). Returns the address. */
 export async function inviteScorer(t: string, groupId: string): Promise<string> {
   return (await api<{ sentTo: string }>('POST', `${cPath(t, 'groups', groupId)}/invite`, {})).sentTo;
+}
+
+/** Void the group's links and sign out every phone that joined through one. */
+export async function revokeGroupLinks(t: string, groupId: string): Promise<void> {
+  await api('POST', `${cPath(t, 'groups', groupId)}/revoke`, {});
 }
 
 // ── Rounds ─────────────────────────────────────────────────────────────────────

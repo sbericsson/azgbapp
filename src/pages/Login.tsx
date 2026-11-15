@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { findTournamentByCode } from '../lib/data';
+import { findTournamentByCode, getServerConfig } from '../lib/data';
 import { EmailSignIn } from '../components/EmailSignIn';
+import { LinkSignIn } from '../components/LinkSignIn';
 
 function initialTournamentCode(): string {
   const urlCode = new URLSearchParams(window.location.search).get('code');
@@ -15,10 +16,15 @@ function initialTournamentCode(): string {
 }
 
 /**
- * Sign-in for organisers and scorers: email link or code (R13). Spectators
+ * Sign-in for organisers and scorers (R13): a link from the organiser (or
+ * its code), or, when the server can send email, an emailed link. Spectators
  * can open a tournament's results by code without signing in.
  */
 export function Login() {
+  const [emailSignIn, setEmailSignIn] = useState(false);
+  useEffect(() => {
+    getServerConfig().then((c) => setEmailSignIn(c.emailSignIn)).catch(() => {});
+  }, []);
   // Pre-fill from ?code= (shared links), else the last tournament on this phone
   const [tournamentCode, setTournamentCode] = useState(initialTournamentCode);
   const [found, setFound] = useState<{ code: string; id: string | null; name?: string; logoUrl?: string }>({ code: '', id: null });
@@ -50,7 +56,14 @@ export function Login() {
           <p className="text-white text-center text-lg font-semibold mb-4">{tournament.name}</p>
         )}
 
-        <EmailSignIn tournamentId={tournament?.id ?? undefined} />
+        <LinkSignIn />
+
+        {emailSignIn && (
+          <div className="mt-6 pt-6 border-t border-gray-800">
+            <p className="text-gray-400 text-sm text-center mb-3">Or get a link by email:</p>
+            <EmailSignIn tournamentId={tournament?.id ?? undefined} />
+          </div>
+        )}
 
         <div className="mt-8 pt-6 border-t border-gray-800">
           <p className="text-gray-400 text-sm text-center mb-3">Just following along? Open the results by tournament code.</p>

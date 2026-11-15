@@ -27,18 +27,19 @@ R12, R14, R2 (per-hole writes into `holeMap`, dirty tracking, in-progress hole s
 
 Done on branch `self-hosted-backend` (merge after the dev-site check in `DEPLOY-SELF-HOSTED.md`):
 - R13: Firebase replaced by a Node + SQLite API on the VPS (Firebase's paid plan was not an option).
-  Email link + code sign-in for organisers and scorers; organisers send each group's scorer a link;
-  co-organisers; app admins by `APP_ADMIN_EMAILS`. Access control enforced by the server and covered
+  Sign-in by link or code: organisers share each group's link (text/copy, no scorer email needed),
+  copy co-organiser links; app admins by `APP_ADMIN_EMAILS`, first link from `npm run login-link`.
+  Email sending is optional (SMTP). Access control enforced by the server and covered
   by `server/app.test.ts` (Vitest, no emulator). No PINs or emails in public responses. Offline
   scoring through an on-device outbox; live updates over Server-Sent Events. Firestore import script.
 - R15: OpenRouter and golf-course calls go through nginx `/proxy/*`, which adds the keys, requires a
   signed-in user and rate-limits. No key is in the bundle.
 
 Open:
-- [ ] Run the cutover in `DEPLOY-SELF-HOSTED.md`: SMTP account, server setup, dev site, import, production, then deploy the deny-all `firestore.rules`.
+- [ ] Run the cutover in `DEPLOY-SELF-HOSTED.md`: server setup, dev site, import, production, then deploy the deny-all `firestore.rules`.
 - [ ] Hourly SQLite backup cron on the VPS (`server/scripts/backup-db.ts`) and an off-server copy.
 - [ ] Playwright offline test: lock three holes with the API down, bring it back, assert sync (checked by hand on 2026-11-15).
-- [ ] Test email sign-in on a current iPhone: link in Safari, code in the home-screen app; and on Android.
+- [ ] Test a shared group link on a current iPhone (Safari, and the code in the home-screen app) and on Android.
 
 ---
 

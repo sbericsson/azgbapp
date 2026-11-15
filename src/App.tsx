@@ -24,9 +24,9 @@ function Spinner() {
 
 /** Root: sign-in when signed out; otherwise by role in the open tournament */
 function RootRoute() {
-  const { email, tournamentId, isAdmin, isAppAdmin, loading } = useContext(AuthContext);
+  const { signedIn, tournamentId, isAdmin, isAppAdmin, loading } = useContext(AuthContext);
   if (loading) return <Spinner />;
-  if (!email) return <Login />;
+  if (!signedIn) return <Login />;
   if (!tournamentId) return isAppAdmin ? <Navigate to="/app-admin" replace /> : <TournamentPicker />;
   if (isAdmin) return <Navigate to="/admin" replace />;
   return <Home />;
@@ -41,9 +41,9 @@ function ProtectedAppAdminRoute({ element }: { element: ReactElement }) {
 
 /** Signed in with a tournament open (scorer or organiser) */
 function ProtectedGroupRoute({ element }: { element: ReactElement }) {
-  const { email, tournamentId, loading } = useContext(AuthContext);
+  const { signedIn, tournamentId, loading } = useContext(AuthContext);
   if (loading) return <Spinner />;
-  if (!email || !tournamentId) return <Navigate to="/" replace />;
+  if (!signedIn || !tournamentId) return <Navigate to="/" replace />;
   return element;
 }
 

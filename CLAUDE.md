@@ -36,7 +36,7 @@ If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to bu
 
 ## Project Overview
 
-**AZGB / Golf Bender** is a mobile-first real-time scoring app for golf tournaments: a React + TypeScript app served by nginx, and a small Node + SQLite API server on the same VPS. Multiple tournaments live side by side, each identified by a code. Organisers and group scorers sign in with an emailed link or 6-digit code; spectators open results by code without signing in. Firebase is retired (it was the backend until the move documented in `DEPLOY-SELF-HOSTED.md`). `TODOS.md` tracks open work; `REPO_REVIEW.md` (branch `claude/quirky-sagan-sd1tr9`) is the review it came from.
+**AZGB / Golf Bender** is a mobile-first real-time scoring app for golf tournaments: a React + TypeScript app served by nginx, and a small Node + SQLite API server on the same VPS. Multiple tournaments live side by side, each identified by a code. Organisers and group scorers sign in with a link (or its code) that an organiser copies and texts or emails; the server can also email links if SMTP is set up. Spectators open results by code without signing in. Firebase is retired (it was the backend until the move documented in `DEPLOY-SELF-HOSTED.md`). `TODOS.md` tracks open work; `REPO_REVIEW.md` (branch `claude/quirky-sagan-sd1tr9`) is the review it came from.
 
 ### Scoring Formats
 - **Wolf**: 4 players; one player per hole makes a lone/partner decision; point-based scoring with carry-over on ties
@@ -54,7 +54,7 @@ If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to bu
 | Build & Dev | Vite, Tailwind CSS v4, vite-plugin-pwa |
 | API server | Node 20+, Hono, better-sqlite3, nodemailer (`server/`) |
 | Database | SQLite file on the VPS (`DB_PATH`, default `/var/lib/azgb/azgb.db`) |
-| Auth | Emailed sign-in link + 6-digit code; httpOnly session cookie (60 days, sliding) |
+| Auth | Sign-in links (shared by organisers; emailed only if SMTP is set) + codes; httpOnly session cookie (60 days, sliding) |
 | Live updates | Server-Sent Events per tournament (`/api/tournaments/:t/events`) |
 | Hosting | nginx serves `dist/` and proxies `/api/` and `/proxy/*`; systemd runs the API |
 | Testing | Vitest (app logic and API access control) |
@@ -73,10 +73,12 @@ npm run lint         # ESLint
 npm test             # Vitest once (includes server/app.test.ts access-control tests)
 npm run import:firestore -- --env <file> --db <sqlite> --owner <email>   # one-time migration
 npm run backup:db -- <db> <dir>   # consistent SQLite copy, keeps 30
+npm run login-link -- <email> [--db <sqlite>] [--url <app url>]   # print a sign-in link (first sign-in)
 ```
 
-Local sign-in: run both dev commands, request a link, and copy the code or link the API prints.
-Put `APP_ADMIN_EMAILS=you@example.com` in `server/.env` to test the app-admin pages.
+Local sign-in: put `APP_ADMIN_EMAILS=you@example.com` in `server/.env`, run both dev commands, then
+`npm run login-link -- you@example.com` and open the link. `dev:server` sets `DEV_LOG_LINKS=1`, so
+"email me a link" also works locally (printed, not sent).
 
 ### Deploy
 
@@ -94,7 +96,7 @@ CI (`.github/workflows/ci.yml`) runs lint, tests, and both builds on pushes to `
 
 ## Configuration
 
-- **API server** (`/etc/azgb/api.env` on the VPS, `server/.env` locally; template `server/.env.example`): `PORT`, `DB_PATH`, `APP_URL` (used in emailed links), `APP_ADMIN_EMAILS`, `SMTP_URL`, `MAIL_FROM`, `ALLOW_SELF_SERVICE`, `DEV_LOG_LINKS`.
+- **API server** (`/etc/azgb/api.env` on the VPS, `server/.env` locally; template `server/.env.example`): `PORT`, `DB_PATH`, `APP_URL` (used in links), `APP_ADMIN_EMAILS`, `SMTP_URL` + `MAIL_FROM` (optional; without them email sign-in is off and `/api/config` says `emailSignIn: false`), `ALLOW_SELF_SERVICE`, `DEV_LOG_LINKS`.
 - **Third-party API keys** never reach the browser (R15). Production: `/etc/nginx/azgb-keys.conf` sets `$openrouter_key` and `$golfcourse_key`, and nginx adds them in `/proxy/openrouter/chat/completions` and `/proxy/golfcourse/v1/courses`, only for signed-in users (`auth_request` → `/api/auth/check`) and rate-limited. Dev: `OPENROUTER_API_KEY` / `GOLF_COURSE_API_KEY` in `.env.local` (no `VITE_` prefix), used by the Vite proxy.
 - `VITE_*` values are compiled into the public bundle: never put a secret in one.
 
@@ -111,7 +113,7 @@ server/
 ├── events.ts                  # In-process change feed for Server-Sent Events
 ├── db.ts                      # Schema
 ├── app.test.ts                # Access-control tests (who may read/write what)
-└── scripts/                   # import-firestore.ts, backup-db.ts
+└── scripts/                   # import-firestore.ts, backup-db.ts, login-link.ts
 src/
 ├── App.tsx                    # Routes and guards (UI only; the server enforces access)
 ├── types/                     # tournament.ts, scoring.ts
@@ -129,7 +131,8 @@ src/
 │   ├── useAuth.ts             # Signed-in email, open tournament, roles, scorer groups
 │   ├── useGroup.ts            # One group's scores: dirty tracking, per-hole writes
 │   └── useLeaderboard.ts
-├── components/EmailSignIn.tsx # Request link → enter code
+├── components/LinkSignIn.tsx  # Paste a link or type its code (home-screen app)
+├── components/EmailSignIn.tsx # Request a link by email → enter code (only with SMTP)
 └── pages/                     # Login, SignIn (/signin?token=), TournamentPicker, CreateTournament,
                                # Home, Scorecard, PublicScorecard, Leaderboard, PublicResults,
                                # PrintResults, Admin, AppAdmin
@@ -148,18 +151,19 @@ docs               tournament_id, coll, id, round_id, scorer_email, data JSON
                    coll ∈ rounds | groups | golfers | courses; data keeps the client shapes
                    groups.scorer_email is private (organisers only)
 scores             tournament_id, round_id, group_id, hole_index, data JSON (HoleScore), updated_at
-login_tokens       token_hash, code_hash, email, tournament_id, expires_at, failed_codes
-sessions           sid_hash, email, expires_at
+login_tokens       token_hash, code_hash, email?, tournament_id?, group_id?, expires_at, failed_codes
+sessions           sid_hash, email?, expires_at        # email is null for a phone signed in by group link
+session_grants     sid_hash, tournament_id, group_id   # groups a phone may score (from shared links)
 ```
 
 App admins are not in the database: `APP_ADMIN_EMAILS`. Emails are stored lower-case.
 
 ### Who may do what (enforced in `server/app.ts`, tested in `server/app.test.ts`)
 - Anyone: read a tournament, its rounds, groups (without scorer emails), courses and scores; the live feed.
-- Signed in: create a tournament (if `ALLOW_SELF_SERVICE`), becoming its organiser.
-- Organiser of T (or app admin): everything inside T, the golfer roster, scorer emails, invites, backups, the organiser list.
-- Scorer (email on a group): write that group's holes while the round is not complete; rename the group.
-- App admin: list, archive, delete and import tournaments.
+- Signed in with an email: create a tournament (if `ALLOW_SELF_SERVICE`), becoming its organiser. A phone signed in only by a group link has no email and can do nothing beyond its groups.
+- Organiser of T (or app admin): everything inside T, the golfer roster, scorer emails, group and organiser sign-in links, resetting a group's sign-in, backups, the organiser list.
+- Scorer (email on the group, or a session grant from the group's link): write that group's holes while the round is not complete; rename the group.
+- App admin: list, archive, delete and import tournaments; a sign-in link for any email.
 - Never in a public response: emails, PINs, tokens.
 
 ---
@@ -167,10 +171,13 @@ App admins are not in the database: `APP_ADMIN_EMAILS`. Emails are stored lower-
 ## Key Architectural Patterns
 
 ### Auth / Session
-- `/auth/request` emails a link (`/signin?token=…`) plus a 6-digit code; only known emails get one unless `purpose: 'create'`. Same answer either way. Self-requested links last 2 hours; organiser invites (`/groups/:id/invite`) 7 days. Five wrong codes block an email's outstanding codes.
-- The code exists for the iPhone home-screen app, which does not share Safari's cookies.
-- `useAuth` caches `/auth/me` in `localStorage` (`azgb_me`) so the app opens offline, and remembers the open tournament (`azgb_tournament`). A generation counter stops a slow start-up check from overwriting a newer sign-in.
-- Scorers have one group per round: `groupForRound(roundId)`; Scorecard loads that group (or the URL's group in organiser mode).
+- Two kinds of link, both `/signin?token=…`, both reusable until expiry:
+  - **Shared links** (`issueSharedLogin`): made by organisers (`/groups/:id/link`, `/admins/link`), app admins (`/auth/link`) or the `login-link` script; 14 days; code `XXXX-XXXX` that works alone. A group link grants that group to the phone's session (adding to any it already has); if the group has a scorer email, the phone also signs in as that person.
+  - **Emailed links** (`/auth/request`, only with SMTP): 2 hours; 6-digit code checked with the email; five wrong codes block that email's codes.
+- `/groups/:id/revoke` deletes the group's links and every session grant for it.
+- The codes exist for the iPhone home-screen app, which does not share Safari's cookies (`LinkSignIn` accepts a pasted link or a code).
+- `useAuth`: `signedIn` (email or grants), `email` (may be null), `groupForRound`. `/auth/me` is cached in `localStorage` (`azgb_me`) so the app opens offline; the open tournament is remembered (`azgb_tournament`). A generation counter stops a slow start-up check from overwriting a newer sign-in.
+- Scorers have one group per round: Scorecard loads `groupForRound(roundId)` (or the URL's group in organiser mode).
 
 ### Score Locking (local-first)
 - `saveHole` is fire-and-forget. Writes go into the outbox (`localStorage` `azgb_outbox`, `src/lib/api.ts`) and are sent in order when there is a connection; 5xx/429/no connection retry, 4xx drop and reject the promise (shown as a save error). Never `await` a score write in the scoring UI.

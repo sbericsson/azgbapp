@@ -47,23 +47,37 @@ CREATE TABLE IF NOT EXISTS scores (
   PRIMARY KEY (tournament_id, round_id, group_id, hole_index)
 );
 
+-- Sign-in links. A link carries an email (organiser, or a scorer with an
+-- email), a group (scorer link shared by the organiser), or both.
 CREATE TABLE IF NOT EXISTS login_tokens (
   token_hash    TEXT PRIMARY KEY,
   code_hash     TEXT NOT NULL,
-  email         TEXT NOT NULL,
+  email         TEXT,
   tournament_id TEXT,
+  group_id      TEXT,
   created_at    INTEGER NOT NULL,
   expires_at    INTEGER NOT NULL,
   failed_codes  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS login_tokens_email ON login_tokens(email);
+CREATE INDEX IF NOT EXISTS login_tokens_code ON login_tokens(code_hash);
+CREATE INDEX IF NOT EXISTS login_tokens_group ON login_tokens(tournament_id, group_id);
 
+-- A session is a signed-in phone: an email, group grants from shared links, or both
 CREATE TABLE IF NOT EXISTS sessions (
   sid_hash   TEXT PRIMARY KEY,
-  email      TEXT NOT NULL,
+  email      TEXT,
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS session_grants (
+  sid_hash      TEXT NOT NULL REFERENCES sessions(sid_hash) ON DELETE CASCADE,
+  tournament_id TEXT NOT NULL,
+  group_id      TEXT NOT NULL,
+  PRIMARY KEY (sid_hash, tournament_id, group_id)
+);
+CREATE INDEX IF NOT EXISTS session_grants_group ON session_grants(tournament_id, group_id);
 `;
 
 export function openDb(path: string): DB {

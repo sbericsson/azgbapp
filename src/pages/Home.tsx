@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import { subscribeRounds, listCourses } from '../lib/data';
+import { LinkSignIn } from '../components/LinkSignIn';
 import type { Round, Course } from '../types/tournament';
 
 const dayOrder: Round['day'][] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -30,6 +31,7 @@ export function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [addingLink, setAddingLink] = useState(false);
 
   // Live subscription so a round going active appears without restarting the app (B13)
   useEffect(() => {
@@ -74,7 +76,7 @@ export function Home() {
           <img src={tournament?.logoUrl || '/azgb-logo.png'} alt="AZGB" className="h-10 w-auto bg-white rounded-lg p-0.5" />
           <div className="min-w-0">
             <p className="text-white text-sm font-semibold truncate">{tournament?.name}</p>
-            <p className="text-gray-400 text-xs truncate">{email}</p>
+            <p className="text-gray-400 text-xs truncate">{email ?? `Scoring for ${scorerGroups.map((g) => g.name).join(', ') || 'your group'}`}</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -163,6 +165,16 @@ export function Home() {
             </div>
           </div>
         ))}
+
+        <div className="mt-10 border-t border-gray-800 pt-4">
+          {addingLink ? (
+            <LinkSignIn compact onSignedIn={() => setAddingLink(false)} />
+          ) : (
+            <button onClick={() => setAddingLink(true)} className="w-full text-gray-500 text-sm">
+              Got a sign-in link for another group? Add it here
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
