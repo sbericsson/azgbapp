@@ -294,7 +294,7 @@ function scoreColor(gross: number, par: number) {
 function HoleDetailModal({ entry, round, onClose }: HoleDetailModalProps) {
   const { group, scoreDoc } = entry;
   const holes = scoreDoc?.holes ?? [];
-  const lockedHoles = holes.filter((h) => h.locked);
+  const lockedHoles = holes.filter((h) => h?.locked);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
@@ -331,7 +331,7 @@ function HoleDetailModal({ entry, round, onClose }: HoleDetailModalProps) {
           )}
 
           {holes.map((hole, i) => {
-            if (!hole.locked) return null;
+            if (!hole?.locked) return null;
             const par = round.par[i] ?? 4;
 
             return (

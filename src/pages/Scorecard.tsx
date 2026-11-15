@@ -13,7 +13,8 @@ import { WolfHoleResult } from '../components/scorecard/WolfHoleResult';
 import { BestBallRow } from '../components/scorecard/BestBallRow';
 import { ScrambleInput } from '../components/scorecard/ScrambleInput';
 import { HoleFeedbackToast } from '../components/scorecard/HoleFeedbackToast';
-import { withComputedPoints, isWolfHole } from '../lib/scoring/wolf';
+import { RoundReview } from '../components/scorecard/RoundReview';
+import { isWolfHole } from '../lib/scoring/wolf';
 import {
   deriveWolfHoles,
   wolfPlayerTotals,
@@ -24,15 +25,22 @@ import {
 import { computeBestScore, isBestBallHole } from '../lib/scoring/bestBall';
 import { isScrambleHole } from '../lib/scoring/scramble';
 import { isGauntletHole, getAltShotTeeOffIndex } from '../lib/scoring/gauntlet';
+import { withLockDefaults } from '../lib/scoring/holes';
 import { generateWolfFeedback } from '../lib/scoring/feedback';
 import { buildFallbackFeedback, getAIFeedback } from '../lib/scoring/feedbackAI';
 import type { AIFeedbackContext } from '../lib/scoring/feedbackAI';
 import type { LeaderboardEntry } from '../hooks/useLeaderboard';
 
 export function Scorecard() {
-  const { roundId } = useParams<{ roundId: string }>();
+  const { roundId, groupId: groupParam } = useParams<{ roundId: string; groupId?: string }>();
   const navigate = useNavigate();
-  const { group, updateGroupName, tournamentId } = useContext(AuthContext);
+  const { group: authGroup, updateGroupName, tournamentId, isAdmin } = useContext(AuthContext);
+  // Organiser correcting a group's scores from the admin panel (R6). Edits are
+  // allowed on a completed round and no commentary is shown.
+  const adminMode = Boolean(groupParam && isAdmin);
+  const [adminGroup, setAdminGroup] = useState<Group | null>(null);
+  const [adminGroupLoaded, setAdminGroupLoaded] = useState(false);
+  const group = adminMode ? adminGroup : authGroup;
 
   const [round, setRound] = useState<Round | null>(null);
   const [roundLoaded, setRoundLoaded] = useState(false);
@@ -114,6 +122,14 @@ export function Scorecard() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!adminMode || !tournamentId || !roundId) return;
+    return subscribeGroupsByRound(tournamentId, roundId, (groups) => {
+      setAdminGroup(groups.find((g) => g.id === groupParam) ?? null);
+      setAdminGroupLoaded(true);
+    });
+  }, [adminMode, tournamentId, roundId, groupParam]);
+
   // Subscribe to all groups in this round (for leaderboard rank — bestBall/scramble only)
   useEffect(() => {
     if (!roundId || !round || round.format === 'wolf' || !tournamentId) return;
@@ -158,13 +174,19 @@ export function Scorecard() {
   if (!group || !round) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400">{loading || !roundLoaded ? 'Loading…' : 'Round not found'}</p>
+        <p className="text-gray-400">
+          {loading || !roundLoaded || (adminMode && !adminGroupLoaded)
+            ? 'Loading…'
+            : adminMode && !group ? 'Group not found' : 'Round not found'}
+        </p>
       </div>
     );
   }
 
   const activeGroup = group;
   const isComplete = round.status === 'complete';
+  // Golfers cannot change a completed round; the organiser can
+  const editable = adminMode || !isComplete;
   const par = round.par[currentHole] ?? 4;
   const hole = holes[currentHole];
   const lockedHoles = holes.map((h) => h?.locked ?? false);
@@ -347,6 +369,11 @@ export function Scorecard() {
     };
   }
 
+  // Locking the only unlocked hole finishes the round: show the whole round first (R11)
+  const finalLockPreview = showLockConfirm && hole && !hole.locked && holes.every((h, i) => i === currentHole || h.locked)
+    ? holes.map((h, i) => (i === currentHole ? withLockDefaults(h, par, players, currentCarry) : h))
+    : null;
+
   const handleLockHole = () => {
     if (!hole || hole.locked || lockingRef.current) return;
     if (isWolfHole(hole)) {
@@ -358,32 +385,14 @@ export function Scorecard() {
     // Close the confirmation immediately; the save is local-first and does not
     // wait for the network (B1).
     setShowLockConfirm(false);
-    let locked = { ...hole, locked: true };
-
-    if (isWolfHole(locked)) {
-      // Default unset (0) scores to par before computing points
-      const wolfLocked = locked as WolfHoleScore;
-      const scores = wolfLocked.scores.map((s) =>
-        s.gross <= 0 ? { ...s, gross: par } : s,
-      );
-      locked = withComputedPoints({ ...wolfLocked, scores }, players, currentCarry);
-    } else if (isBestBallHole(locked)) {
-      const bb = locked as BestBallHoleScore;
-      // Default unset scores to par
-      const scores = bb.scores.map((s) => s.gross <= 0 ? { ...s, gross: par } : s);
-      locked = { ...bb, scores, bestScore: computeBestScore(scores) ?? bb.bestScore };
-    } else if (isScrambleHole(locked)) {
-      const sc = locked as ScrambleHoleScore;
-      if (sc.teamScore === null) locked = { ...sc, teamScore: par };
-    } else if (isGauntletHole(locked)) {
-      const g = locked as GauntletHoleScore;
-      if (g.teamScore === null) locked = { ...g, teamScore: par };
-    }
+    const locked = withLockDefaults(hole, par, players, currentCarry);
 
     saveHole(lockedHoleIndex, locked);
 
-    // Generate post-lock commentary
-    if (isWolfHole(locked)) {
+    // Generate post-lock commentary (not for organiser corrections)
+    if (adminMode) {
+      // no commentary
+    } else if (isWolfHole(locked)) {
       // Wolf: synchronous static feedback, auto-dismiss
       setFeedbackAutoDismiss(true);
       const message = generateWolfFeedback(locked as WolfHoleScore, players, par);
@@ -459,6 +468,11 @@ export function Scorecard() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+      {adminMode && (
+        <div className="bg-blue-900 text-blue-100 text-xs text-center py-2 px-4" role="status">
+          Organiser editing {group.name}. Unlock a hole, correct it, and lock it again; changes save at once.
+        </div>
+      )}
       {/* Sync status */}
       {saveError ? (
         <div className="bg-red-900 text-red-200 text-xs text-center py-2 px-4" role="alert">
@@ -480,7 +494,7 @@ export function Scorecard() {
         groupName={group.name}
         roundName={round.name}
         courseName={courseName}
-        onEditGroupName={isComplete ? undefined : () => {
+        onEditGroupName={!editable || adminMode ? undefined : () => {
           setNameInput(group.name);
           setEditingName(true);
         }}
@@ -498,7 +512,7 @@ export function Scorecard() {
           <div className="flex items-center gap-2 bg-gray-800 rounded-xl px-4 py-3 mb-3 border border-gray-700">
             <span className="text-lg">🔒</span>
             <span className="text-gray-300 text-sm flex-1">Hole locked</span>
-            {!isComplete && (
+            {editable && (
               <button
                 onClick={handleUnlockHole}
                 className="text-yellow-400 text-sm font-medium"
@@ -582,20 +596,31 @@ export function Scorecard() {
 
       {/* Bottom action bar */}
       <div className="bg-gray-900 border-t border-gray-700 p-4 flex gap-3 pb-safe">
-        <button
-          onClick={() => navigate('/')}
-          className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
-        >
-          ← Rounds
-        </button>
-        <button
-          onClick={() => navigate(`/leaderboard/${round.id}`)}
-          className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
-        >
-          Leaderboard
-        </button>
+        {adminMode ? (
+          <button
+            onClick={() => navigate('/admin')}
+            className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
+          >
+            ← Admin
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => navigate('/')}
+              className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
+            >
+              ← Rounds
+            </button>
+            <button
+              onClick={() => navigate(`/leaderboard/${round.id}`)}
+              className="h-14 px-4 rounded-xl bg-gray-700 text-gray-300 font-medium"
+            >
+              Leaderboard
+            </button>
+          </>
+        )}
         <div className="flex-1" />
-        {isComplete ? (
+        {!editable ? (
           <div className="h-14 px-6 rounded-xl bg-gray-800 border border-gray-700 text-gray-400 font-medium flex items-center gap-2">
             <span>🏁</span> Round Complete
           </div>
@@ -623,10 +648,30 @@ export function Scorecard() {
       {showLockConfirm && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-6">
           <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
-            <h3 className="text-xl font-bold text-white mb-2">Lock Hole {currentHole + 1}?</h3>
-            <p className="text-gray-400 text-sm mb-6">
-              Scores will be saved. Any unset scores default to par. You can unlock if needed.
-            </p>
+            {finalLockPreview ? (
+              <>
+                <h3 className="text-xl font-bold text-white mb-2">Last hole: check the round</h3>
+                <p className="text-gray-400 text-sm mb-3">
+                  This is every hole as it will be saved (unset scores count as par). Tap a hole to fix it first.
+                </p>
+                <div className="mb-5">
+                  <RoundReview
+                    format={round.format}
+                    par={round.par}
+                    players={players}
+                    holes={finalLockPreview}
+                    onGoToHole={(i) => { setShowLockConfirm(false); goToHole(i); }}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-bold text-white mb-2">Lock Hole {currentHole + 1}?</h3>
+                <p className="text-gray-400 text-sm mb-6">
+                  Scores will be saved. Any unset scores default to par. You can unlock if needed.
+                </p>
+              </>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setShowLockConfirm(false)}

@@ -59,6 +59,7 @@ function AppRoutes() {
       <Route path="/app-admin" element={<ProtectedAppAdminRoute element={<AppAdmin />} />} />
       <Route path="/admin" element={<ProtectedAdminRoute element={<Admin />} />} />
       <Route path="/admin/results" element={<ProtectedAdminRoute element={<PrintResults />} />} />
+      <Route path="/admin/scorecard/:roundId/:groupId" element={<ProtectedAdminRoute element={<Scorecard />} />} />
       <Route path="/scorecard/:roundId/:groupId" element={<ProtectedGroupRoute element={<PublicScorecard />} />} />
       <Route path="/scorecard/:roundId" element={<ProtectedGroupRoute element={<Scorecard />} />} />
       <Route path="/leaderboard/:roundId" element={<ProtectedGroupRoute element={<Leaderboard />} />} />

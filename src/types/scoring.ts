@@ -47,5 +47,10 @@ export type HoleScore = WolfHoleScore | BestBallHoleScore | ScrambleHoleScore | 
 export interface GroupScoreDoc {
   groupId: string;
   updatedAt: number;
-  holes: HoleScore[];
+  /**
+   * Holes by index. Read from Firestore this can have gaps (holes nobody has
+   * saved yet); fill them with completeHoles() in lib/scoring/holes.ts.
+   * Stored as `holeMap` (one field per hole) or, in older docs, a `holes` array.
+   */
+  holes: (HoleScore | null)[];
 }

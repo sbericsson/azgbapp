@@ -1,4 +1,5 @@
 import { useState, useEffect, useContext, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
 import {
   createGolfer, listGolfers, deleteGolfer,
@@ -1193,6 +1194,12 @@ export function Admin() {
                             )}
                           </div>
                           <div className="flex flex-col items-end gap-1.5 ml-2">
+                            <Link
+                              to={`/admin/scorecard/${r.id}/${g.id}`}
+                              className="text-green-400 text-xs font-medium px-1"
+                            >
+                              Scores
+                            </Link>
                             <button
                               onClick={() => openEdit(g)}
                               className="text-blue-400 text-xs font-medium px-1"

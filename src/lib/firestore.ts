@@ -11,10 +11,12 @@ import {
   query,
   where,
   onSnapshot,
+  FieldPath,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { tournamentCodeCandidates } from './tournamentCode';
+import { holesFromDoc } from './scoring/holes';
 import type { Tournament, Group, Golfer, Course, Round, AppConfig } from '../types/tournament';
 import type { GroupScoreDoc, HoleScore } from '../types/scoring';
 import type { DocumentReference, UpdateData, DocumentData } from 'firebase/firestore';
@@ -386,17 +388,38 @@ export function scoresCollectionRef(tournamentId: string, roundId: string) {
  * The write is applied to the local cache (and visible to snapshot listeners)
  * immediately, and queued for sync.
  */
-export function saveGroupScores(
+/**
+ * Write some holes of a group's score doc (R2). Each hole is its own field
+ * (`holeMap.<index>`), replaced whole, so a device never overwrites holes it
+ * did not change. Works on a doc that does not exist yet. Returns the write's
+ * promise, which settles on server acknowledgement: never await it in the
+ * scoring UI (B1).
+ */
+export function saveGroupHoles(
   tournamentId: string,
   roundId: string,
   groupId: string,
-  holes: HoleScore[],
+  updates: ReadonlyMap<number, HoleScore>,
 ): Promise<void> {
+  const holeMap: Record<string, HoleScore> = {};
+  const fields: (string | FieldPath)[] = ['groupId', 'updatedAt'];
+  for (const [index, hole] of updates) {
+    holeMap[String(index)] = hole;
+    fields.push(new FieldPath('holeMap', String(index)));
+  }
   return setDoc(
     scoreDocRef(tournamentId, roundId, groupId),
-    { groupId, updatedAt: Date.now(), holes },
-    { merge: true },
+    { groupId, updatedAt: Date.now(), holeMap },
+    { mergeFields: fields },
   );
+}
+
+function toScoreDoc(data: DocumentData, id: string): GroupScoreDoc {
+  return {
+    groupId: typeof data.groupId === 'string' ? data.groupId : id,
+    updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+    holes: holesFromDoc(data),
+  };
 }
 
 export function subscribeGroupScores(
@@ -417,7 +440,7 @@ export function subscribeGroupScores(
         callback(null, meta);
         return;
       }
-      callback(snap.data() as GroupScoreDoc, meta);
+      callback(toScoreDoc(snap.data(), snap.id), meta);
     },
     (err) => console.error('subscribeGroupScores error', err),
   );
@@ -428,7 +451,7 @@ export async function listAllScores(
   roundId: string,
 ): Promise<GroupScoreDoc[]> {
   const snap = await getDocs(scoresCollectionRef(tournamentId, roundId));
-  return snap.docs.map((d) => d.data() as GroupScoreDoc);
+  return snap.docs.map((d) => toScoreDoc(d.data(), d.id));
 }
 
 export async function clearRoundScores(
@@ -447,7 +470,7 @@ export function subscribeAllScores(
   return onSnapshot(
     scoresCollectionRef(tournamentId, roundId),
     (snap) => {
-      callback(snap.docs.map((d) => d.data() as GroupScoreDoc));
+      callback(snap.docs.map((d) => toScoreDoc(d.data(), d.id)));
     },
     (err) => console.error('subscribeAllScores error', err),
   );

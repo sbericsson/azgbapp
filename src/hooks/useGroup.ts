@@ -1,53 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { subscribeGroupScores, saveGroupScores } from '../lib/firestore';
-import type { GroupScoreDoc, HoleScore } from '../types/scoring';
-import type { Round } from '../types/tournament';
-import { emptyWolfHole, isWolfHole } from '../lib/scoring/wolf';
-import { emptyBestBallHole, isBestBallHole } from '../lib/scoring/bestBall';
-import { emptyScrambleHole, isScrambleHole } from '../lib/scoring/scramble';
-import { emptyGauntletHole, isGauntletHole } from '../lib/scoring/gauntlet';
-import type { Player, RoundFormat } from '../types/tournament';
+import { subscribeGroupScores, saveGroupHoles } from '../lib/firestore';
+import type { HoleScore } from '../types/scoring';
+import type { Player, Round } from '../types/tournament';
+import { buildInitialHoles, completeHoles, mergeRemoteHoles } from '../lib/scoring/holes';
 
 interface UseGroupReturn {
-  scoreDoc: GroupScoreDoc | null;
   holes: HoleScore[];
   loading: boolean;
   /** True while this phone has writes the server has not yet acknowledged. */
   pendingSync: boolean;
   saveError: boolean;
   /**
-   * Save a hole. Applies locally and queues the write immediately; it does not
-   * wait for the server, so it works the same offline (B1).
+   * Save a hole (lock or unlock). Applies locally and queues the write at once;
+   * it does not wait for the server, so it works the same offline (B1).
    */
   saveHole: (holeIndex: number, hole: HoleScore) => void;
+  /**
+   * Edit a hole in progress. Shown at once and written shortly after the last
+   * change, so entries survive the app being closed or the tab evicted (R2).
+   */
   setLocalHole: (holeIndex: number, hole: HoleScore) => void;
 }
 
-function holesMatchFormat(holes: HoleScore[], format: RoundFormat): boolean {
-  if (holes.length === 0) return true;
-  const first = holes[0];
-  switch (format) {
-    case 'wolf':     return isWolfHole(first);
-    case 'bestBall': return isBestBallHole(first);
-    case 'scramble': return isScrambleHole(first);
-    case 'gauntlet': return isGauntletHole(first);
-  }
-}
+/** Wait this long after the last edit to an unlocked hole before writing it. */
+const IN_PROGRESS_SAVE_MS = 800;
 
-function buildInitialHoles(round: Round, players: Player[]): HoleScore[] {
-  return Array.from({ length: round.holes }, (_, i) => {
-    switch (round.format) {
-      case 'wolf':
-        return emptyWolfHole(players, i);
-      case 'bestBall':
-        return emptyBestBallHole(players);
-      case 'scramble':
-        return emptyScrambleHole();
-      case 'gauntlet':
-        return emptyGauntletHole(i, round.holes);
-    }
-  });
-}
+interface Ids { tournamentId: string; roundId: string; groupId: string }
 
 export function useGroup(
   tournamentId: string | null,
@@ -55,7 +33,6 @@ export function useGroup(
   groupId: string | null,
   players: Player[],
 ): UseGroupReturn {
-  const [scoreDoc, setScoreDoc] = useState<GroupScoreDoc | null>(null);
   const [holes, setHoles] = useState<HoleScore[]>([]);
   // Which subscription has delivered its first snapshot; loading is derived from it
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
@@ -66,10 +43,49 @@ export function useGroup(
   // change goes through commitHoles so the ref and state never diverge.
   const holesRef = useRef<HoleScore[]>([]);
   const subscribedKeyRef = useRef<string | null>(null);
+  const idsRef = useRef<Ids | null>(null);
+  // Holes edited here and not yet written: remote snapshots do not overwrite them (R2)
+  const dirtyRef = useRef(new Set<number>());
+  // Pending in-progress writes by hole index
+  const timersRef = useRef(new Map<number, number>());
+
   const commitHoles = useCallback((next: HoleScore[]) => {
     holesRef.current = next;
     setHoles(next);
   }, []);
+
+  // Each write carries only the holes it changes (B2).
+  const write = useCallback((ids: Ids, updates: Map<number, HoleScore>) => {
+    setSaveError(false);
+    setPendingSync(true);
+    // Fire and forget: the local cache applies the write at once and the SDK
+    // syncs it when a connection is available. The promise only settles on
+    // server acknowledgement, so the UI never awaits it.
+    try {
+      saveGroupHoles(ids.tournamentId, ids.roundId, ids.groupId, updates).catch((err) => {
+        console.error('saveHoles error', err);
+        setSaveError(true);
+      });
+    } catch (err) {
+      console.error('saveHoles error', err);
+      setSaveError(true);
+    }
+  }, []);
+
+  /** Write every in-progress hole now (app hidden, group change, unmount). */
+  const flushPending = useCallback(() => {
+    const ids = idsRef.current;
+    if (!ids || timersRef.current.size === 0) return;
+    const updates = new Map<number, HoleScore>();
+    for (const [i, timer] of timersRef.current) {
+      window.clearTimeout(timer);
+      const hole = holesRef.current[i];
+      if (hole) updates.set(i, hole);
+      dirtyRef.current.delete(i);
+    }
+    timersRef.current.clear();
+    if (updates.size > 0) write(ids, updates);
+  }, [write]);
 
   useEffect(() => {
     if (!tournamentId || !round || !groupId) return;
@@ -77,9 +93,12 @@ export function useGroup(
     // A different round or group must not inherit the previous one's holes.
     // A resubscribe for the same key (e.g. the round doc changed) keeps local edits.
     if (subscribedKeyRef.current !== key) {
+      flushPending();
       subscribedKeyRef.current = key;
       holesRef.current = [];
+      dirtyRef.current = new Set();
     }
+    idsRef.current = { tournamentId, roundId: round.id, groupId };
 
     const unsub = subscribeGroupScores(
       tournamentId,
@@ -87,69 +106,73 @@ export function useGroup(
       groupId,
       (doc, meta) => {
         setPendingSync(meta.hasPendingWrites);
-        if (doc && holesMatchFormat(doc.holes, round.format)) {
-          setScoreDoc(doc);
-          // Merge: keep local state for any unlocked holes (user may be entering data),
-          // but always accept locked holes from Firestore as the source of truth.
-          const prev = holesRef.current;
-          commitHoles(
-            prev.length === 0
-              ? doc.holes
-              : prev.map((localHole, i) => {
-                  const remoteHole = doc.holes[i];
-                  return remoteHole?.locked ? remoteHole : localHole;
-                }),
-          );
-        } else {
-          // No doc, or stale doc from a previous format — build fresh holes.
-          commitHoles(buildInitialHoles(round, players));
-        }
+        // No doc yet, or a stale doc from a previous format: start from empty holes.
+        const remote = (doc && completeHoles(round, players, doc.holes)) ?? buildInitialHoles(round, players);
+        const prev = holesRef.current;
+        commitHoles(prev.length === 0 ? remote : mergeRemoteHoles(prev, remote, dirtyRef.current));
         setLoadedKey(key);
       },
     );
 
     return unsub;
-  }, [groupId, players, round, tournamentId, commitHoles]);
+  }, [groupId, players, round, tournamentId, commitHoles, flushPending]);
+
+  // Write in-progress entries before the app is backgrounded or the page left
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') flushPending(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flushPending);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flushPending);
+      flushPending();
+    };
+  }, [flushPending]);
 
   const setLocalHole = useCallback(
     (holeIndex: number, hole: HoleScore) => {
       const next = [...holesRef.current];
       next[holeIndex] = hole;
       commitHoles(next);
+      dirtyRef.current.add(holeIndex);
+
+      const ids = idsRef.current;
+      if (!ids) return;
+      const existing = timersRef.current.get(holeIndex);
+      if (existing !== undefined) window.clearTimeout(existing);
+      timersRef.current.set(holeIndex, window.setTimeout(() => {
+        timersRef.current.delete(holeIndex);
+        dirtyRef.current.delete(holeIndex);
+        const latest = holesRef.current[holeIndex];
+        if (latest) write(ids, new Map([[holeIndex, latest]]));
+      }, IN_PROGRESS_SAVE_MS));
     },
-    [commitHoles],
+    [commitHoles, write],
   );
 
   const saveHole = useCallback(
     (holeIndex: number, hole: HoleScore) => {
-      if (!tournamentId || !round || !groupId) return;
+      const ids = idsRef.current;
+      if (!ids) return;
+      // This write supersedes any pending in-progress write of the same hole
+      const pending = timersRef.current.get(holeIndex);
+      if (pending !== undefined) {
+        window.clearTimeout(pending);
+        timersRef.current.delete(holeIndex);
+      }
+      dirtyRef.current.delete(holeIndex);
 
-      // Build the full holes array to persist: latest known state + this hole.
       // Update the ref synchronously so a second save before re-render keeps this one.
       const next = [...holesRef.current];
       next[holeIndex] = hole;
       commitHoles(next);
-      setSaveError(false);
-      setPendingSync(true);
-
-      // Fire and forget: the local cache applies the write at once and the SDK
-      // syncs it when a connection is available. The promise only settles on
-      // server acknowledgement, so it is never awaited by the UI.
-      try {
-        saveGroupScores(tournamentId, round.id, groupId, next).catch((err) => {
-          console.error('saveHole error', err);
-          setSaveError(true);
-        });
-      } catch (err) {
-        console.error('saveHole error', err);
-        setSaveError(true);
-      }
+      write(ids, new Map([[holeIndex, hole]]));
     },
-    [tournamentId, round, groupId, commitHoles],
+    [commitHoles, write],
   );
 
   const loading = Boolean(tournamentId && round && groupId) &&
     loadedKey !== `${tournamentId}/${round?.id}/${groupId}`;
 
-  return { scoreDoc, holes, loading, pendingSync, saveError, saveHole, setLocalHole };
+  return { holes, loading, pendingSync, saveError, saveHole, setLocalHole };
 }

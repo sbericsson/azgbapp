@@ -9,6 +9,7 @@ import { computeWolfPoints, isWolfHole } from './wolf';
 import { computeBestScore, isBestBallHole } from './bestBall';
 import { isScrambleHole } from './scramble';
 import { isGauntletHole } from './gauntlet';
+import { completeHoles } from './holes';
 
 /**
  * Single source of truth for round standings. Every screen that shows a total
@@ -130,26 +131,18 @@ export function higherIsBetter(format: RoundFormat): boolean {
   return format === 'wolf';
 }
 
-function holesMatchFormat(holes: HoleScore[], format: RoundFormat): boolean {
-  const first = holes.find(Boolean);
-  if (!first) return true;
-  switch (format) {
-    case 'wolf': return isWolfHole(first);
-    case 'bestBall': return isBestBallHole(first);
-    case 'scramble': return isScrambleHole(first);
-    case 'gauntlet': return isGauntletHole(first);
-  }
-}
 
 export function computeGroupStanding(
-  round: Pick<Round, 'format' | 'par'>,
+  round: Pick<Round, 'format' | 'par'> & { holes?: number },
   group: Group,
   scoreDoc: GroupScoreDoc | undefined,
 ): Omit<StandingEntry, 'rank' | 'tied'> {
-  if (!scoreDoc || !Array.isArray(scoreDoc.holes) || !holesMatchFormat(scoreDoc.holes, round.format)) {
+  const holes = scoreDoc && Array.isArray(scoreDoc.holes)
+    ? completeHoles(round, group.players, scoreDoc.holes)
+    : null;
+  if (!scoreDoc || !holes) {
     return { group, score: 0, holesCompleted: 0 };
   }
-  const holes = scoreDoc.holes;
   const holesCompleted = lockedCount(holes);
 
   if (round.format === 'wolf') {
@@ -171,9 +164,9 @@ export function computeGroupStanding(
       name: p.name,
       total: playerToPar(holes, round.par, p.id),
     }));
-    return { group, score, holesCompleted, playerTotals, scoreDoc };
+    return { group, score, holesCompleted, playerTotals, scoreDoc: { ...scoreDoc, holes } };
   }
-  return { group, score, holesCompleted, scoreDoc };
+  return { group, score, holesCompleted, scoreDoc: { ...scoreDoc, holes } };
 }
 
 /**
@@ -204,7 +197,7 @@ export function rankEntries<T extends { score: number; holesCompleted: number; g
 }
 
 export function computeStandings(
-  round: Pick<Round, 'format' | 'par'>,
+  round: Pick<Round, 'format' | 'par'> & { holes?: number },
   groups: Group[],
   scoreDocs: GroupScoreDoc[],
 ): StandingEntry[] {

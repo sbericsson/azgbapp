@@ -162,7 +162,9 @@ tournaments/{tournamentId}       # ID is the tournament code
     name, day (weekday), format, status, holes, par[], courseId?
 
     scores/{groupId}             # Live score doc (created on first save)
-      groupId, updatedAt, holes: HoleScore[]
+      groupId, updatedAt
+      holeMap: { "<index>": HoleScore }   # one field per hole, written one hole at a time
+      holes?: HoleScore[]                 # legacy full array; holeMap entries win on read
 
   groups/{groupId}
     name, pin (4-digit), players: [{id, name}], roundId
@@ -187,8 +189,11 @@ tournaments/{tournamentId}       # ID is the tournament code
 ### Score Locking (local-first)
 - Golfers lock holes one at a time as they finish.
 - `saveHole` is fire-and-forget: it applies the write to the local Firestore cache and returns at once. Never `await` a Firestore write in the scoring UI — offline, the promise does not settle until reconnect.
+- Writes carry only the holes they change (`saveGroupHoles`, `holeMap.<i>` via `mergeFields`), so a second device or the organiser cannot be overwritten by a stale full array. In-progress (unlocked) edits are written 0.8 s after the last change and flushed when the app is hidden.
+- A score doc read from Firestore can have gaps: `GroupScoreDoc.holes` is `(HoleScore | null)[]`. Fill it with `completeHoles()` from `src/lib/scoring/holes.ts` before use (standings already does).
 - Sync state comes from snapshot `metadata.hasPendingWrites` (`pendingSync` in `useGroup`).
-- Locked holes are source-of-truth from Firestore. Unlocked holes are driven by local state; `useGroup` merges remote + local on updates.
+- `useGroup` keeps a dirty set: holes edited here and not yet written keep their local value; every other hole takes the remote value, including a remote unlock or an organiser correction (`mergeRemoteHoles`).
+- Organisers correct scores in the same `Scorecard` page at `/admin/scorecard/:roundId/:groupId` (admin mode: edits allowed on completed rounds, no commentary).
 
 ### Standings
 - Every total and rank goes through `src/lib/scoring/standings.ts` (`computeStandings`, `teamToPar`, `playerToPar`, `deriveWolfHoles`). Do not add per-screen aggregation.

@@ -20,8 +20,10 @@ Not built:
 
 Done on `main`: R15 interim (OpenRouter key blanked in production builds), R4 + R3 (shared
 `standings.ts`, Wolf carry derived at read time), R1 (local-first lock, sync status, double-tap
-guard), R5 (admin write fixes), R6 partial (reopen a completed round without deleting scores),
-R7 (JSON backup and restore), R8, R9 (CI and standings/backup tests), R10, R11 partial, R12, R14.
+guard), R5 (admin write fixes), R6 (reopen a completed round without deleting scores; organiser
+edits a group's scores at `/admin/scorecard/:roundId/:groupId`), R7 (JSON backup and restore), R8,
+R9 (CI and standings/backup/hole-merge tests), R10, R11 (whole-round review before the last lock),
+R12, R14, R2 (per-hole writes into `holeMap`, dirty tracking, in-progress hole saved after 0.8 s).
 
 Open:
 - [ ] **R13 (P0 before onboarding other organisers):** email-link sign-in for organisers and scorers,
@@ -30,10 +32,6 @@ Open:
   public results page still downloads PIN-bearing documents.
 - [ ] **R15 proper:** route OpenRouter and golf-course API calls through a server-side proxy with a
   rate limit; the course-search key is still in the bundle.
-- [ ] **R6 rest:** admin screen to edit a group's hole scores.
-- [ ] **R2 (P2, P1 once organisers edit scores):** per-hole writes with dirty tracking; persist the
-  in-progress hole.
-- [ ] **R11 rest:** whole-round review before the last lock.
 - [ ] Playwright offline test: lock three holes offline against the Firestore emulator, reconnect, assert sync.
 - [ ] Firebase SDK is pinned to 12.9.x: 12.19 adds ~60 kB gzipped to the first load. Revisit when code-splitting.
 
@@ -92,4 +90,4 @@ Open:
 ## Post-Phase 1 (deferred)
 
 - [ ] Tighten Firestore security rules — superseded by R13 above
-- [ ] DRY `generateBestBallFeedback` / `generateScrambleFeedback` in `feedback.ts` (95% identical)
+- [x] `generateBestBallFeedback` / `generateScrambleFeedback` were unused; removed (the AI fallback lives in `feedbackAI.ts`)
