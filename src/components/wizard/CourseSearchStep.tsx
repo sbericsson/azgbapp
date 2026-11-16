@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 // ── golfcourseapi.com response types ─────────────────────────────────────────
-// Endpoint: GET /v1/courses?club_name=QUERY
-// Auth:     Authorization: Key YOUR_KEY
+// Endpoint: GET /v1/search?search_query=QUERY (via /proxy/golfcourse, which adds the key)
 
 interface ApiHole {
   par: number;
@@ -54,8 +53,13 @@ const DEFAULT_HOLES = 18;
 // Frozen so consumers can't accidentally mutate the module-level array
 const DEFAULT_PAR = Object.freeze(Array(DEFAULT_HOLES).fill(4)) as number[];
 
+/** First tee with data: the API returns an empty list (not null) when a course has no men's tees. */
+function firstTee(c: ApiCourse): ApiTee | undefined {
+  return c.tees?.male?.[0] ?? c.tees?.female?.[0];
+}
+
 function parseCourse(c: ApiCourse): CourseSearchResult {
-  const tee = (c.tees?.male ?? c.tees?.female ?? [])[0];
+  const tee = firstTee(c);
   const holes = tee?.number_of_holes ?? DEFAULT_HOLES;
   const par = tee?.holes?.map((h) => h.par) ?? Array(holes).fill(4);
   // Use course_name when it adds info (e.g. "Oaks/Lakes"), otherwise club_name
@@ -123,7 +127,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
       try {
         const res = await fetch(
           // Same-origin proxy: nginx adds the API key server-side (R15)
-          `/proxy/golfcourse/v1/courses?club_name=${encodeURIComponent(q.trim())}`,
+          `/proxy/golfcourse/v1/search?search_query=${encodeURIComponent(q.trim())}`,
         );
         if (!res.ok) throw new Error(`API ${res.status}`);
         const data: ApiSearchResponse = await res.json();
@@ -188,7 +192,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
                       <p className="text-green-400 text-xs">{c.course_name}</p>
                     )}
                     {(() => {
-                      const tee = (c.tees?.male ?? c.tees?.female ?? [])[0];
+                      const tee = firstTee(c);
                       const loc = locationLabel(c);
                       const detail = [loc, tee ? `${tee.number_of_holes} holes · par ${tee.par_total}` : null].filter(Boolean).join(' · ');
                       return detail ? <p className="text-gray-500 text-xs">{detail}</p> : null;
