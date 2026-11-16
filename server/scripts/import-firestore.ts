@@ -4,7 +4,7 @@
  * the old app used:
  *
  *   npx tsx server/scripts/import-firestore.ts \
- *     --env /var/www/azgb/.env --db /var/lib/azgb/azgb.db --owner you@example.com [--dry-run]
+ *     --env /var/www/azgb/.env --db ~/azgb-data/azgb.db --owner you@example.com [--dry-run]
  *
  * --env    file with the old VITE_FIREBASE_* values (default .env.local)
  * --db     SQLite file the API server uses (DB_PATH)

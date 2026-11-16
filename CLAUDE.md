@@ -53,10 +53,10 @@ If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to bu
 | Frontend | React 19, TypeScript 5, React Router v7 |
 | Build & Dev | Vite, Tailwind CSS v4, vite-plugin-pwa |
 | API server | Node 20+, Hono, better-sqlite3, nodemailer (`server/`) |
-| Database | SQLite file on the VPS (`DB_PATH`, default `/var/lib/azgb/azgb.db`) |
+| Database | SQLite file on the VPS (`DB_PATH`; on racknerd `~/azgb-data/azgb.db`) |
 | Auth | Sign-in links (shared by organisers; emailed only if SMTP is set) + codes; httpOnly session cookie (60 days, sliding) |
 | Live updates | Server-Sent Events per tournament (`/api/tournaments/:t/events`) |
-| Hosting | nginx serves `dist/` and proxies `/api/` and `/proxy/*`; systemd runs the API |
+| Hosting | racknerd VPS: nginx serves `dist/` and proxies `/api/` and `/proxy/*` (`nginx/snippets/`); PM2 runs the API as `sbericsson` (`azgb-api` :8787, `azgb-api-dev` :8788) |
 | Testing | Vitest (app logic and API access control) |
 | Linting | ESLint, TypeScript ESLint |
 
@@ -88,7 +88,7 @@ bash /var/www/azgb/deploy.sh       # main → production
 bash /var/www/azgb/deploy-dev.sh   # pick a branch → dev.golfbender.app
 ```
 
-Both: `git reset` → `npm ci` → `scripts/build-release.sh` (builds into `releases/<stamp>-<sha>`, atomically swaps the `dist/` symlink; a failed build leaves the site untouched) → `scripts/restart-api.sh` (bundles the API, restarts the systemd unit `azgb-api` / `azgb-api-dev`). First-time server setup, nginx, SMTP, keys, migration and backups: `DEPLOY-SELF-HOSTED.md`.
+Both: `git reset` → `npm ci` → `scripts/build-release.sh` (builds into `releases/<stamp>-<sha>`, atomically swaps the `dist/` symlink; a failed build leaves the site untouched) → `scripts/restart-api.sh` (bundles the API, restarts the PM2 process `azgb-api` / `azgb-api-dev`). First-time server setup, nginx, SMTP, keys, migration and backups: `DEPLOY-SELF-HOSTED.md`.
 
 CI (`.github/workflows/ci.yml`) runs lint, tests, and both builds on pushes to `main` and on PRs.
 
@@ -96,7 +96,7 @@ CI (`.github/workflows/ci.yml`) runs lint, tests, and both builds on pushes to `
 
 ## Configuration
 
-- **API server** (`/etc/azgb/api.env` on the VPS, `server/.env` locally; template `server/.env.example`): `PORT`, `DB_PATH`, `APP_URL` (used in links), `APP_ADMIN_EMAILS`, `SMTP_URL` + `MAIL_FROM` (optional; without them email sign-in is off and `/api/config` says `emailSignIn: false`), `ALLOW_SELF_SERVICE`, `DEV_LOG_LINKS`.
+- **API server** (`~/azgb-data/api.env` / `api-dev.env` on the VPS, loaded with `node --env-file`; `server/.env` locally; template `server/.env.example`): `PORT`, `DB_PATH`, `APP_URL` (used in links), `APP_ADMIN_EMAILS`, `SMTP_URL` + `MAIL_FROM` (optional; without them email sign-in is off and `/api/config` says `emailSignIn: false`), `ALLOW_SELF_SERVICE`, `DEV_LOG_LINKS`.
 - **Third-party API keys** never reach the browser (R15). Production: `/etc/nginx/azgb-keys.conf` sets `$openrouter_key` and `$golfcourse_key`, and nginx adds them in `/proxy/openrouter/chat/completions` and `/proxy/golfcourse/v1/courses`, only for signed-in users (`auth_request` → `/api/auth/check`) and rate-limited. Dev: `OPENROUTER_API_KEY` / `GOLF_COURSE_API_KEY` in `.env.local` (no `VITE_` prefix), used by the Vite proxy.
 - `VITE_*` values are compiled into the public bundle: never put a secret in one.
 
@@ -136,7 +136,7 @@ src/
 └── pages/                     # Login, SignIn (/signin?token=), TournamentPicker, CreateTournament,
                                # Home, Scorecard, PublicScorecard, Leaderboard, PublicResults,
                                # PrintResults, Admin, AppAdmin
-deploy/azgb-api.service        # systemd unit
+nginx/snippets/, nginx/conf.d/  # API locations + key proxies, rate limits (installed in /etc/nginx)
 nginx.site.conf, nginx/dev-golfbender
 ```
 

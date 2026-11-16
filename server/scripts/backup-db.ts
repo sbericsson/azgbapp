@@ -1,11 +1,11 @@
 /**
  * Consistent copy of the live SQLite database (safe while the API runs).
  *
- *   npx tsx server/scripts/backup-db.ts /var/lib/azgb/azgb.db /var/backups/azgb
+ *   npx tsx server/scripts/backup-db.ts ~/azgb-data/azgb.db ~/azgb-data/backups
  *
  * Writes azgb-YYYY-MM-DDTHH-MM.db and keeps the newest 30. Suggested cron
  * (crontab -e as the API's user):
- *   15 * * * * cd /var/www/azgb && npx tsx server/scripts/backup-db.ts /var/lib/azgb/azgb.db /var/backups/azgb
+ *   15 * * * * cd /var/www/azgb && npx tsx server/scripts/backup-db.ts ~/azgb-data/azgb.db ~/azgb-data/backups
  */
 import Database from 'better-sqlite3';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';

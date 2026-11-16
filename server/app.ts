@@ -218,9 +218,16 @@ export function createApp(db: DB, mailer: Mailer | null, config: AppConfig, feed
     c.set('viewer', { session, email: session?.email ?? null, appAdmin: isAppAdmin(session?.email ?? null) });
     // Reject cross-site writes: browsers send Origin on POST/PUT/PATCH/DELETE
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+      // Same site = the Origin's host is the host the request came in on (the
+      // app answers on more than one domain), or APP_URL
       const origin = c.req.header('origin');
-      if (origin && origin !== new URL(config.appUrl).origin && origin !== new URL(c.req.url).origin) {
-        return c.json({ error: 'Cross-site request refused' }, 403);
+      if (origin) {
+        let host = '';
+        try { host = new URL(origin).host; } catch { /* malformed: refused below */ }
+        const sameHost = host !== '' && host === (c.req.header('x-forwarded-host') ?? c.req.header('host'));
+        if (!sameHost && origin !== new URL(config.appUrl).origin) {
+          return c.json({ error: 'Cross-site request refused' }, 403);
+        }
       }
     }
     await next();

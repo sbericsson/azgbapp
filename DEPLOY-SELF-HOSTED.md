@@ -33,77 +33,70 @@ group's phones…**, which also cancels its links, then share a new one.
 
 ## 2. One-time server setup
 
-Replace `www-data` with the user that owns `/var/www/azgb` if it is different.
+The VPS runs Node apps with PM2 as `sbericsson` (kept alive by `pm2-sbericsson.service`),
+so the API does too: no sudo to start or restart it. Its settings and database live in
+`~/azgb-data`. Only nginx needs root.
 
 ```bash
-# Database directory, writable only by the service user
-sudo mkdir -p /var/lib/azgb /etc/azgb
-sudo chown www-data:www-data /var/lib/azgb
-
-# API settings (production and dev)
-sudo cp /var/www/azgb/server/.env.example /etc/azgb/api.env
-sudo cp /var/www/azgb/server/.env.example /etc/azgb/api-dev.env
-sudo chmod 600 /etc/azgb/*.env
-sudo nano /etc/azgb/api.env       # APP_URL, APP_ADMIN_EMAILS (SMTP_URL optional)
-sudo nano /etc/azgb/api-dev.env   # PORT=8788, DB_PATH=/var/lib/azgb/azgb-dev.db, APP_URL=https://dev.golfbender.app
-
-# API keys for the nginx proxies (R15), outside git
-sudo tee /etc/nginx/azgb-keys.conf >/dev/null <<'KEYS'
-set $openrouter_key "sk-or-...";
-set $golfcourse_key "...";
-KEYS
-sudo chmod 600 /etc/nginx/azgb-keys.conf
+mkdir -p ~/azgb-data/backups && chmod 700 ~/azgb-data
+cp /var/www/azgb/server/.env.example ~/azgb-data/api.env       # production
+cp /var/www/azgb/server/.env.example ~/azgb-data/api-dev.env   # dev
+chmod 600 ~/azgb-data/*.env
+# api.env:     PORT=8787  DB_PATH=/home/sbericsson/azgb-data/azgb.db      APP_URL=https://golfbender.app
+# api-dev.env: PORT=8788  DB_PATH=/home/sbericsson/azgb-data/azgb-dev.db  APP_URL=https://dev.golfbender.app
+# both: APP_ADMIN_EMAILS=you@example.com (SMTP_URL optional)
 ```
 
-systemd units (one per site). Check the node path with `which node` and fix
-`ExecStart` if it is not `/usr/bin/node`:
+nginx (root): rate limits, the key file, and one include per site.
 
 ```bash
-sudo cp /var/www/azgb/deploy/azgb-api.service /etc/systemd/system/azgb-api.service
-sudo sed -e 's#/var/www/azgb$#/var/www/azgb-dev#' -e 's#api.env#api-dev.env#' \
-  -e 's#Description=Golf Bender API#Description=Golf Bender API (dev)#' \
-  /var/www/azgb/deploy/azgb-api.service | sudo tee /etc/systemd/system/azgb-api-dev.service >/dev/null
-sudo systemctl daemon-reload
+sudo cp nginx/conf.d/azgb-limits.conf /etc/nginx/conf.d/
+sudo cp nginx/snippets/azgb-api.conf nginx/snippets/azgb-api-dev.conf /etc/nginx/snippets/
+sudo install -m 600 /dev/null /etc/nginx/azgb-keys.conf   # then add:
+#   set $openrouter_key "sk-or-...";   (empty string if you have none: AI commentary falls back)
+#   set $golfcourse_key "...";
+# In the 443 server block of each site add one line before `location / {`:
+#   azgb, app-azgbscore (golfbender.app):  include /etc/nginx/snippets/azgb-api.conf;
+#   dev-golfbender:                        include /etc/nginx/snippets/azgb-api-dev.conf;
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
-The deploy scripts restart the API with `sudo systemctl restart`. If you deploy
-as a user without passwordless sudo, allow just that command
-(`sudo visudo -f /etc/sudoers.d/azgb`):
-
-```
-youruser ALL=(root) NOPASSWD: /usr/bin/systemctl restart azgb-api, /usr/bin/systemctl restart azgb-api-dev
-```
+Adding the production include before the cutover is harmless: the old app never calls `/api/`.
 
 ## 3. Dev site first
 
-1. Copy the new nginx config for the dev site from the branch
-   (`nginx/dev-golfbender`) to `/etc/nginx/sites-available/`, then
-   `sudo nginx -t && sudo systemctl reload nginx`.
-2. Deploy the branch: `bash /var/www/azgb/deploy-dev.sh` and pick
-   `self-hosted-backend`. The first run builds the API but skips the restart
-   if the unit is not enabled yet; enable it:
-   `sudo systemctl enable --now azgb-api-dev`, then check
-   `journalctl -u azgb-api-dev -n 20` shows "listening".
-   Then get your first sign-in link:
+1. Deploy the branch: `bash /var/www/azgb/deploy-dev.sh` and pick `self-hosted-backend`
+   (the first run builds the API and notes that no process exists yet).
+2. Start the API once and save the PM2 list:
 
    ```bash
    cd /var/www/azgb-dev
-   sudo -u www-data npx tsx server/scripts/login-link.ts you@example.com \
-     --db /var/lib/azgb/azgb-dev.db --url https://dev.golfbender.app
+   pm2 start server/dist/index.mjs --name azgb-api-dev \
+     --node-args="--env-file=/home/sbericsson/azgb-data/api-dev.env"
+   pm2 save
+   curl -s https://dev.golfbender.app/api/config     # {"emailSignIn":false}
    ```
+
+   Later deploys restart it automatically.
 3. Copy your production tournaments in (Firestore is still readable):
 
    ```bash
    cd /var/www/azgb-dev
-   sudo -u www-data npx tsx server/scripts/import-firestore.ts \
-     --env /var/www/azgb/.env --db /var/lib/azgb/azgb-dev.db --owner you@example.com --dry-run
+   npx tsx server/scripts/import-firestore.ts --env /var/www/azgb/.env \
+     --db ~/azgb-data/azgb-dev.db --owner you@example.com --dry-run
    # looks right? run again without --dry-run
    ```
 
    `--owner` becomes the organiser of every imported tournament (repeat it for
-   several). PINs are dropped. Add co-organisers and each group's scorer email
-   in the app afterwards.
-4. Test on real phones at https://dev.golfbender.app:
+   several). PINs are dropped. Add co-organisers, and optionally scorer emails, in the app.
+4. Your first sign-in link:
+
+   ```bash
+   npx tsx server/scripts/login-link.ts you@example.com \
+     --db ~/azgb-data/azgb-dev.db --url https://dev.golfbender.app
+   ```
+
+5. Test on real phones at https://dev.golfbender.app:
    - Open your link; you land on App Admin.
    - In a tournament, tap **Share sign-in link** on a group and text it to
      yourself. Open it on an iPhone in Safari, **and** in the home-screen app
@@ -113,27 +106,31 @@ youruser ALL=(root) NOPASSWD: /usr/bin/systemctl restart azgb-api, /usr/bin/syst
 
 ## 4. Production cutover
 
-Pick a quiet time: scorers have to sign in again by email after this.
+Pick a quiet time: scorers need a new sign-in link after this.
 
 1. Merge `self-hosted-backend` into `main` and push.
-2. Copy `nginx.site.conf` to the production site (keep your domain and the
-   certbot lines), `sudo nginx -t && sudo systemctl reload nginx`.
-3. `sudo systemctl enable azgb-api` (do not start it yet).
-4. Import production data:
+2. Import production data (from the dev checkout, which already has the tools):
 
    ```bash
-   cd /var/www/azgb && git pull && npm ci --include=dev
-   sudo -u www-data npx tsx server/scripts/import-firestore.ts \
-     --env /var/www/azgb/.env --db /var/lib/azgb/azgb.db --owner you@example.com
+   cd /var/www/azgb-dev
+   npx tsx server/scripts/import-firestore.ts --env /var/www/azgb/.env \
+     --db ~/azgb-data/azgb.db --owner you@example.com
    ```
 
-5. `bash /var/www/azgb/deploy.sh` (builds the app and the API, starts it).
-6. Get your production sign-in link with `login-link` (as in step 3, with
-   `--db /var/lib/azgb/azgb.db --url https://your-domain`).
-7. In the app, for each live tournament: share each group's sign-in link with
+3. `bash /var/www/azgb/deploy.sh`, then start the API once:
+
+   ```bash
+   cd /var/www/azgb
+   pm2 start server/dist/index.mjs --name azgb-api \
+     --node-args="--env-file=/home/sbericsson/azgb-data/api.env"
+   pm2 save
+   ```
+
+4. Your sign-in link: `login-link.ts` as in step 3.4 with `--db ~/azgb-data/azgb.db --url https://golfbender.app`.
+5. In the app, for each live tournament: share each group's sign-in link with
    its scorer; add co-organisers under Tournament Settings → Organisers and
    copy their links to them.
-8. Close the old database to the public once you are happy: from your laptop,
+6. Close the old database to the public once you are happy: from your laptop,
    `firebase deploy --only firestore:rules` (the repo's rules now deny everything).
    Before this step you can roll back by pointing `dist` at the previous
    release (`ln -sfn releases/<older> dist.next && mv -T dist.next dist`),
@@ -142,14 +139,13 @@ Pick a quiet time: scorers have to sign in again by email after this.
 ## 5. Backups
 
 The database is one file. Take a consistent copy every hour and keep 30
-(`crontab -e` as `www-data`):
+(`crontab -e` as `sbericsson`):
 
 ```
-15 * * * * cd /var/www/azgb && npx tsx server/scripts/backup-db.ts /var/lib/azgb/azgb.db /var/backups/azgb
+15 * * * * cd /var/www/azgb && npx tsx server/scripts/backup-db.ts /home/sbericsson/azgb-data/azgb.db /home/sbericsson/azgb-data/backups
 ```
 
-(`sudo mkdir -p /var/backups/azgb && sudo chown www-data /var/backups/azgb` first.)
-Copy `/var/backups/azgb` off the server now and then. Organisers can still
+Copy `~/azgb-data/backups` off the server now and then. Organisers can still
 download a JSON backup of their tournament from Tournament Settings, and app
 admins can restore one from the App Admin page.
 
@@ -157,7 +153,7 @@ admins can restore one from the App Admin page.
 
 | Symptom | Check |
 |---|---|
-| App says "No connection" everywhere | `systemctl status azgb-api`, `journalctl -u azgb-api -n 50` |
+| App says "No connection" everywhere | `pm2 status`, `pm2 logs azgb-api --lines 50` |
 | Lost your own sign-in | Run `login-link` again on the server |
 | Link opens but the iPhone home-screen app is still signed out | Expected: it does not share Safari's sign-in. Paste the link or type its code on the app's sign-in page |
 | "That link or code did not work" | Older than 14 days, or the group was reset or deleted: share a new link |

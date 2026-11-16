@@ -135,6 +135,13 @@ describe('sign-in', () => {
   it('refuses cross-site writes', async () => {
     const res = await call('POST', '/auth/request', { email: 'x@example.com' }, {}, { origin: 'https://evil.test' });
     expect(res.status).toBe(403);
+    const spoof = await call('POST', '/auth/request', { email: 'x@example.com' }, {}, { origin: 'https://evil.test', host: 'golf.test' });
+    expect(spoof.status).toBe(403);
+  });
+
+  it('accepts writes from any domain the app is served on', async () => {
+    const res = await call('POST', '/auth/request', { email: 'x@example.com' }, {}, { origin: 'https://azgb.example.com', host: 'azgb.example.com' });
+    expect(res.status).toBe(200);
   });
 });
 

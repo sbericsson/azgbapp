@@ -2,8 +2,8 @@
  * Print a sign-in link for an email, straight from the database. This is how
  * the first app admin signs in when the server sends no email.
  *
- *   sudo -u www-data npx tsx server/scripts/login-link.ts you@example.com \
- *     --db /var/lib/azgb/azgb.db --url https://app.example.com
+ *   npx tsx server/scripts/login-link.ts you@example.com \
+ *     --db ~/azgb-data/azgb.db --url https://app.example.com
  *
  * The link and its code work for 14 days. For it to open the app-admin pages,
  * the email must be in APP_ADMIN_EMAILS; any other email can sign in and see
@@ -19,7 +19,7 @@ function arg(name: string): string | undefined {
 
 const email = normalizeEmail(process.argv[2]);
 if (!email) {
-  console.error('Usage: login-link.ts <email> [--db /var/lib/azgb/azgb.db] [--url https://app.example.com]');
+  console.error('Usage: login-link.ts <email> [--db ~/azgb-data/azgb.db] [--url https://app.example.com]');
   process.exit(1);
 }
 const dbPath = arg('db') ?? process.env.DB_PATH ?? './data/azgb.db';
