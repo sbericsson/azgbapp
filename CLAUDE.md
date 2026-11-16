@@ -207,6 +207,7 @@ App admins are not in the database: `APP_ADMIN_EMAILS`. Emails are stored lower-
 - **Never put secrets in `VITE_*`.** Keys go to nginx (prod) or the Vite proxy (dev), which also strip the session cookie.
 - **The service worker** must not serve the app shell for `/api/` or `/proxy/` (`navigateFallbackDenylist` in `vite.config.ts`).
 - **nginx must not buffer `/api/`** (Server-Sent Events): `proxy_buffering off`.
+- **`better-sqlite3` is pinned to `~12.9.0`**: the VPS runs Node 20 (shared with other apps) and has no compiler; later releases ship no Node 20 Linux binary. Check `https://github.com/WiseLibs/better-sqlite3/releases` for a `node-v115-linux-x64` asset before upgrading.
 - **One API process.** The change feed and rate limits are in memory; do not run several instances.
 - **TypeScript strict mode** for app and server (`tsconfig.server.json`); builds fail on type errors.
 - **Tailwind v4** uses `@tailwindcss/vite` — no `tailwind.config.js`.

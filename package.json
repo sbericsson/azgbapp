@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.19.19",
-    "better-sqlite3": "^12.11.1",
+    "better-sqlite3": "~12.9.0",
     "hono": "^4.13.18",
     "nodemailer": "^7.0.13",
     "react": "^19.2.0",
