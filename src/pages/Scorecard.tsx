@@ -377,7 +377,7 @@ export function Scorecard() {
         holesPlayed,
       })),
       ourGroupName: groupName,
-      recentFeedback: feedbackHistoryRef.current.slice(-3),
+      recentFeedback: feedbackHistoryRef.current.slice(-5),
     };
   }
 

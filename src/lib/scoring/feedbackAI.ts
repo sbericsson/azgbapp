@@ -116,7 +116,7 @@ function buildFallbackPolish(ctx: AIFeedbackContext): string {
   if (rel === -1) {
     if (ctx.standing === 'leading' || ctx.standing === 'tiedLead') {
       return pickStable([
-        'That keeps the pressure on the rest of the field.',
+        'That keeps the pressure on everyone else.',
         'That is exactly how you protect position without getting reckless.',
       ], seed);
     }
@@ -175,7 +175,7 @@ function normalize(text: string): string {
     .trim();
 }
 
-function isTooSimilarToRecent(text: string, recent: string[]): boolean {
+function isTooSimilarToRecent(text: string, recent: string[], names: Set<string> = new Set()): boolean {
   const normalized = normalize(text);
   if (!normalized) return true;
 
@@ -184,8 +184,38 @@ function isTooSimilarToRecent(text: string, recent: string[]): boolean {
     const prior = normalize(extractRecentPolish(entry));
     if (!prior) return false;
     if (prior === normalized) return true;
-    return prior.split(' ').slice(0, 6).join(' ') === firstWords;
+    if (prior.split(' ').slice(0, 6).join(' ') === firstWords) return true;
+    return sharesPhrase(normalized, prior, names);
   });
+}
+
+// "the team is" and friends are how every line starts: not a repeated joke
+const FILLER = new Set([
+  'the', 'team', 'is', 'and', 'a', 'an', 'to', 'of', 'on', 'in', 'with', 'it', 'its', 'that', 'like', 'they', 'their',
+  // score talk repeats by nature
+  'birdie', 'birdies', 'eagle', 'or', 'better', 'worse', 'bogey', 'bogeys', 'par', 'zero', 'no', 'holes', 'hole',
+  'straight', 'row', 'stroke', 'strokes', 'up', 'back', 'clear', 'ahead', 'left', 'play', 'all', 'round', 'day',
+  'are', 'be', 'been', 'was', 'were', 'has', 'have', 'had', 'just', 'so', 'now', 'this', 'at', 'for', 'but', 'by',
+  'as', 'out', 'here', 'them', 'you', 'your', 'if', 'than', 'then', 'from', 'into', 'over', 'still', 'even', 'more',
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+  'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'already', 'basically', 'officially', 'right',
+]);
+
+/**
+ * A repeated joke: the same two meaningful words in a row as an earlier line,
+ * once filler, score talk and team names are dropped ("treating par like a
+ * rumor" and "treating par like a total rumor" both reduce to "treating rumor").
+ */
+function sharesPhrase(a: string, b: string, names: Set<string>): boolean {
+  const pairs = (t: string) => {
+    const w = t.split(' ').filter((x) => x.length > 1 && !FILLER.has(x) && !names.has(x));
+    const out = new Set<string>();
+    for (let i = 0; i + 2 <= w.length; i++) out.add(`${w[i]} ${w[i + 1]}`);
+    return out;
+  };
+  const seen = pairs(b);
+  for (const p of pairs(a)) if (seen.has(p)) return true;
+  return false;
 }
 
 function mentionsUnsupportedDetail(text: string, ctx: AIFeedbackContext): boolean {
@@ -213,16 +243,27 @@ function mentionsUnsupportedDetail(text: string, ctx: AIFeedbackContext): boolea
   return false;
 }
 
-function sanitizePolish(text: string, ctx: AIFeedbackContext): string | null {
+/** 5–28 words, no "we/us/our", at most one dash (the prompt asks for ≤20 words). */
+export function isShortThirdPersonLine(sentence: string): boolean {
+  const words = sentence.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w)).length;
+  if (words < 5 || words > 28) return false;
+  if (/\b(we|we're|we've|we'll|us|our|ours)\b/i.test(sentence)) return false;
+  const dashes = (sentence.match(/[—–]|\s-\s/g) ?? []).length;
+  return dashes <= 1;
+}
+
+export function sanitizePolish(text: string, ctx: AIFeedbackContext): string | null {
   const cleaned = stripPreamble(text).replace(/\s+/g, ' ').trim();
   if (!cleaned) return null;
 
   const firstSentence = splitSentences(cleaned)[0] ?? '';
   if (!firstSentence) return null;
   // A reply cut off by max_tokens has no closing punctuation: never show half a joke
-  if (!/[.!?]["')\]]?$/.test(firstSentence)) return null;
+  if (!/[.!]["')\]]?$/.test(firstSentence)) return null;
+  if (!isShortThirdPersonLine(firstSentence)) return null;
   if (mentionsUnsupportedDetail(firstSentence, ctx)) return null;
-  if (isTooSimilarToRecent(firstSentence, ctx.recentFeedback)) return null;
+  const names = new Set(ctx.leaderboard.flatMap((e) => normalize(e.groupName).split(' ')));
+  if (isTooSimilarToRecent(firstSentence, ctx.recentFeedback, names)) return null;
 
   return firstSentence;
 }
@@ -263,14 +304,52 @@ function buildTrendText(ctx: AIFeedbackContext): string {
   return `roast: ${current}, ${momentum}, funny and sharp without being cruel`;
 }
 
+/** Every number the model may mention, computed here so it never has to count. */
+export function buildCountFacts(ctx: AIFeedbackContext): string {
+  const all = [...ctx.holeHistory, ctx.currentHole];
+  const facts: string[] = [];
+  const left = ctx.totalHoles - ctx.currentHole.holeNum;
+  facts.push(left === 0 ? 'round finished' : `${left} hole${left === 1 ? '' : 's'} left`);
+  const under = all.filter((h) => h.rel <= -1).length;
+  facts.push(`${under} birdie${under === 1 ? '' : 's'} or better this round`);
+  const over = all.filter((h) => h.rel >= 1).length;
+  facts.push(`${over} bogey${over === 1 ? '' : 's'} or worse this round`);
+
+  let run = 0;
+  const good = ctx.currentHole.rel <= -1;
+  const bad = ctx.currentHole.rel >= 1;
+  if (good || bad) {
+    for (let i = all.length - 1; i >= 0 && (good ? all[i].rel <= -1 : all[i].rel >= 1); i--) run++;
+    if (run >= 2) facts.push(`${run} ${good ? 'birdies-or-better' : 'bogeys-or-worse'} in a row`);
+  }
+
+  const others = ctx.leaderboard.filter((e) => e.groupName !== ctx.ourGroupName);
+  if (others.length > 0) {
+    const best = others.reduce((a, b) => (b.score < a.score ? b : a));
+    const gap = best.score - ctx.runningTotal; // > 0: we lead
+    facts.push(
+      gap > 0 ? `${gap} stroke${gap === 1 ? '' : 's'} ahead of ${best.groupName}`
+        : gap < 0 ? `${-gap} stroke${gap === -1 ? '' : 's'} behind ${best.groupName}`
+          : `level with ${best.groupName}`,
+    );
+  }
+  return facts.join('; ');
+}
+
 function buildSystemInstruction(format: AIFeedbackContext['format']): string {
   const base =
     'You are the tournament group-chat heckler: hype good trends, roast bad ones. ' +
-    'The app already wrote the factual first sentence; write exactly ONE fresh second sentence. ' +
+    'The app already wrote the factual first sentence; write exactly ONE fresh second sentence of at most 20 words. ' +
+    'It is read on a phone between shots: short and punchy beats clever and long. ' +
+    'Talk about the team in the third person (they, the team, or its name); never we, us or our. ' +
+    'A statement, not a question, with at most one dash. ' +
     'Follow the supplied tone target. Sound like a funny golf buddy, not a TV announcer. ' +
     'If the tone target says recovery hype, the current good hole is the point: celebrate the bounce-back more than you roast the mistake before it. ' +
     'PG-13, playful, never cruel. Use only prompt facts; invent no shots, lies, greens, crowds, bars, carts, or player traits. ' +
-    'Do not contradict score or standing. No preamble, bullets, asterisks, or repeated recent joke patterns.';
+    'Lead with the joke, not the stats: use at most ONE number, never list stats, and do not open with a count. ' +
+    'Never count holes, birdies or strokes yourself: any number you use must appear in the facts. ' +
+    'Do not contradict score or standing; when tied, nobody is ahead. This is stroke play: nobody wins or loses a hole. ' +
+    'Never reuse a phrase, image or sentence shape from the recent lines. No preamble, bullets or asterisks.';
 
   if (format === 'bestBall') {
     return (
@@ -318,6 +397,7 @@ function buildUserPrompt(ctx: AIFeedbackContext): string {
     `Current: hole ${cur.holeNum} of ${ctx.totalHoles}, par ${cur.par}, result ${resultLabel(cur.rel)}.${leadStr} Team running total: ${fmtScore(ctx.runningTotal)}.${streakStr}`,
   );
   parts.push(`Tone target: ${buildTrendText(ctx)}.`);
+  parts.push(`Optional facts (cite at most one; compute no others): ${buildCountFacts(ctx)}.`);
 
   const standingText = buildStandingText(ctx);
   if (standingText) {
@@ -342,9 +422,16 @@ function buildUserPrompt(ctx: AIFeedbackContext): string {
       .join(' | ');
     parts.push(`Leaderboard snapshot: ${lbStr}`);
   }
+  if (ctx.totalGroups === 2) {
+    const rival = ctx.leaderboard.find((e) => e.groupName !== ctx.ourGroupName)?.groupName;
+    if (rival) parts.push(`Only one other group is playing: call them ${rival}, never "the field".`);
+  }
 
   if (ctx.recentFeedback.length > 0) {
-    parts.push(`Avoid echoing these recent lines: ${ctx.recentFeedback.join(' || ')}`);
+    const recentLines = ctx.recentFeedback.map(extractRecentPolish).filter(Boolean);
+    if (recentLines.length > 0) {
+      parts.push(`Recent lines (do not reuse their phrases, images or shape): ${recentLines.join(' || ')}`);
+    }
   }
 
   parts.push('Write one fresh second sentence only.');
@@ -369,45 +456,52 @@ async function getOpenRouterFeedback(ctx: AIFeedbackContext): Promise<string> {
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(OPENROUTER_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Golf Bender',
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [
-          { role: 'system', content: buildSystemInstruction(ctx.format) },
-          { role: 'user', content: buildUserPrompt(ctx) },
-        ],
-        max_tokens: 80,
-        temperature: 0.45,
-        // Reasoning models otherwise spend the whole token budget thinking and return no text
-        reasoning: { enabled: false },
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      console.error('OpenRouter error body:', body);
-      throw new Error(`OpenRouter error: ${res.status}`);
+    // A rejected line (repeat, wrong standing, too long) gets one more, livelier try
+    for (const temperature of [0.45, 0.9]) {
+      const polish = await requestPolish(ctx, temperature, controller.signal);
+      if (polish) return `${buildFactSentence(ctx)} ${polish}`;
     }
-
-    const data = (await res.json()) as {
-      choices?: { finish_reason?: string; message?: { content?: string | null } }[];
-    };
-
-    const choice = data.choices?.[0];
-    const text = choice?.message?.content?.trim();
-    if (!text) throw new Error('Empty response from OpenRouter');
-    if (choice?.finish_reason === 'length') return buildFallbackFeedback(ctx);
-    const polish = sanitizePolish(text, ctx);
-    if (!polish) return buildFallbackFeedback(ctx);
-    return `${buildFactSentence(ctx)} ${polish}`;
+    return buildFallbackFeedback(ctx);
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+async function requestPolish(ctx: AIFeedbackContext, temperature: number, signal: AbortSignal): Promise<string | null> {
+  const res = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'HTTP-Referer': window.location.origin,
+      'X-Title': 'Golf Bender',
+    },
+    body: JSON.stringify({
+      model: OPENROUTER_MODEL,
+      messages: [
+        { role: 'system', content: buildSystemInstruction(ctx.format) },
+        { role: 'user', content: buildUserPrompt(ctx) },
+      ],
+      max_tokens: 80,
+      temperature,
+      // Reasoning models otherwise spend the whole token budget thinking and return no text
+      reasoning: { enabled: false },
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error('OpenRouter error body:', body);
+    throw new Error(`OpenRouter error: ${res.status}`);
+  }
+
+  const data = (await res.json()) as {
+    choices?: { finish_reason?: string; message?: { content?: string | null } }[];
+  };
+
+  const choice = data.choices?.[0];
+  const text = choice?.message?.content?.trim();
+  if (!text) throw new Error('Empty response from OpenRouter');
+  if (choice?.finish_reason === 'length') return null;
+  return sanitizePolish(text, ctx);
 }
