@@ -23,6 +23,7 @@ beforeEach(() => {
     appAdminEmails: new Set([APP_ADMIN]),
     allowSelfService: true,
     secureCookies: true,
+    appAdminCode: '1216-SBE1',
   });
 });
 
@@ -303,6 +304,27 @@ describe('app admin', () => {
     const rival = await signIn('rival@example.com', 'create');
     expect((await call('GET', '/tournaments', undefined, rival)).json).toEqual([]);
     expect((await call('POST', '/import', { backup: {} }, rival)).status).toBe(403);
+  });
+
+  it('signs in as app admin with the permanent code, which lists every tournament', async () => {
+    await setup();
+    for (const code of ['1216-SBE1', '1216sbe1', ' 1216 SBE1 ']) {
+      const res = await call('POST', '/auth/verify', { code });
+      expect(res.status).toBe(200);
+      expect(res.json).toMatchObject({ email: APP_ADMIN, appAdmin: true });
+    }
+    const res = await call('POST', '/auth/verify', { code: '1216-SBE1' });
+    const boss = cookieOf(res);
+    expect(((await call('GET', '/tournaments', undefined, boss)).json as unknown[]).length).toBeGreaterThan(0);
+    expect((await call('POST', '/auth/verify', { code: '1216-SBE2' })).status).toBe(401);
+  });
+
+  it('organisers list only their own tournaments', async () => {
+    await setup();
+    const rival = await signIn('rival@example.com', 'create');
+    await call('POST', '/tournaments', { name: 'Rival Open' }, rival);
+    const list = (await call('GET', '/tournaments', undefined, rival)).json as { name: string }[];
+    expect(list.map((t) => t.name)).toEqual(['Rival Open']);
   });
 });
 

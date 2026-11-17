@@ -14,6 +14,8 @@ import { normalizeEmail, type Mailer } from './auth';
  *   DB_PATH              SQLite file, default ./data/azgb.db
  *   APP_URL              public origin used in emailed links
  *   APP_ADMIN_EMAILS     comma-separated emails that administer everything
+ *   APP_ADMIN_CODE       optional permanent code that signs in as the first APP_ADMIN_EMAILS
+ *                        address (home-screen app); keep it out of the repo
  *   SMTP_URL             optional, e.g. smtps://user:pass@smtp.example.com:465. Without it
  *                        organisers copy and send sign-in links themselves
  *   MAIL_FROM            e.g. "Golf Bender <golf@example.com>"
@@ -49,6 +51,7 @@ const app = createApp(db, mailer, {
   appAdminEmails: new Set((env.APP_ADMIN_EMAILS ?? '').split(',').map(normalizeEmail).filter((e): e is string => !!e)),
   allowSelfService: env.ALLOW_SELF_SERVICE !== 'false',
   secureCookies: appUrl.startsWith('https://'),
+  appAdminCode: env.APP_ADMIN_CODE || null,
 });
 
 const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' }, (info) => {

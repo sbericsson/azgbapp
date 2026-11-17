@@ -6,7 +6,7 @@ import { randomInt } from 'node:crypto';
 import type { DB } from './db';
 import {
   SESSION_COOKIE, SESSION_TTL_MS, SELF_LINK_TTL_MS,
-  normalizeEmail, issueEmailLogin, issueSharedLogin, verifyToken, verifyCode, verifySharedCode,
+  normalizeEmail, normalizeShareCode, safeEqual, issueEmailLogin, issueSharedLogin, verifyToken, verifyCode, verifySharedCode,
   createSession, sessionInfo, setSessionEmail, addGrant, copyGrants, revokeGroupAccess, deleteSession,
   RateLimiter, signInMail, type Mailer, type LoginTarget, type SessionInfo,
 } from './auth';
@@ -29,6 +29,11 @@ export interface AppConfig {
   allowSelfService: boolean;
   /** Send the session cookie only over HTTPS. */
   secureCookies: boolean;
+  /**
+   * A permanent code (e.g. 1216-SBE1) that signs in as the first app admin, for
+   * the home-screen app. Unset: no such code. Keep it in the server's env file only.
+   */
+  appAdminCode?: string | null;
 }
 
 interface Viewer {
@@ -81,6 +86,14 @@ export function createApp(db: DB, mailer: Mailer | null, config: AppConfig, feed
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   const isAppAdmin = (email: string | null) => !!email && config.appAdminEmails.has(email);
+
+  /** The app admin's permanent code, if set and an app admin email exists to sign in as. */
+  const adminCode = config.appAdminCode ? normalizeShareCode(config.appAdminCode) : '';
+  const adminCodeEmail = [...config.appAdminEmails][0] ?? null;
+  function verifyAdminCode(code: string): LoginTarget | null {
+    if (adminCode.length < 8 || !adminCodeEmail) return null;
+    return safeEqual(normalizeShareCode(code), adminCode) ? { email: adminCodeEmail, tournamentId: null, groupId: null } : null;
+  }
 
   function viewerOf(c: Context<Env>): Viewer {
     return c.get('viewer');
@@ -278,7 +291,7 @@ export function createApp(db: DB, mailer: Mailer | null, config: AppConfig, feed
     } else if (typeof body.code === 'string') {
       if (!codeLimiter.allow(clientIp(c))) throw new HttpError(429, 'Too many attempts. Wait 15 minutes.');
       const email = normalizeEmail(body.email);
-      result = email ? verifyCode(db, email, body.code.trim()) : verifySharedCode(db, body.code);
+      result = email ? verifyCode(db, email, body.code.trim()) : (verifyAdminCode(body.code) ?? verifySharedCode(db, body.code));
     }
     if (!result) throw new HttpError(401, 'That link or code is invalid or has expired. Ask for a new one.');
     const viewer = signIn(c, result);

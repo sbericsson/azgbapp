@@ -96,7 +96,7 @@ CI (`.github/workflows/ci.yml`) runs lint, tests, and both builds on pushes to `
 
 ## Configuration
 
-- **API server** (`~/azgb-data/api.env` / `api-dev.env` on the VPS, loaded with `node --env-file`; `server/.env` locally; template `server/.env.example`): `PORT`, `DB_PATH`, `APP_URL` (used in links), `APP_ADMIN_EMAILS`, `SMTP_URL` + `MAIL_FROM` (optional; without them email sign-in is off and `/api/config` says `emailSignIn: false`), `ALLOW_SELF_SERVICE`, `DEV_LOG_LINKS`.
+- **API server** (`~/azgb-data/api.env` / `api-dev.env` on the VPS, loaded with `node --env-file`; `server/.env` locally; template `server/.env.example`): `PORT`, `DB_PATH`, `APP_URL` (used in links), `APP_ADMIN_EMAILS`, `APP_ADMIN_CODE` (optional permanent code that signs in as the first app admin; env file only, never the repo), `SMTP_URL` + `MAIL_FROM` (optional; without them email sign-in is off and `/api/config` says `emailSignIn: false`), `ALLOW_SELF_SERVICE`, `DEV_LOG_LINKS`.
 - **Third-party API keys** never reach the browser (R15). Production: `/etc/nginx/azgb-keys.conf` sets `$openrouter_key` and `$golfcourse_key`, and nginx adds them in `/proxy/openrouter/chat/completions` and `/proxy/golfcourse/v1/search`, only for signed-in users (`auth_request` → `/api/auth/check`) and rate-limited. Dev: `OPENROUTER_API_KEY` / `GOLF_COURSE_API_KEY` in `.env.local` (no `VITE_` prefix), used by the Vite proxy.
 - `VITE_*` values are compiled into the public bundle: never put a secret in one.
 
