@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 
 // ── golfcourseapi.com response types ─────────────────────────────────────────
-// Endpoint: GET /v1/search?search_query=QUERY (via /proxy/golfcourse, which adds the key)
+// GET /v1/search?search_query=QUERY lists courses with tee COUNTS only;
+// GET /v1/courses/ID returns {course} with full tees and holes.
+// Both go through /proxy/golfcourse, which adds the key.
 
 interface ApiHole {
   par: number;
@@ -18,7 +20,7 @@ interface ApiTee {
   holes: ApiHole[];
 }
 
-interface ApiCourse {
+interface ApiCourseSummary {
   id: number;
   club_name: string;
   course_name: string;
@@ -27,6 +29,9 @@ interface ApiCourse {
     state?: string;
     country?: string;
   };
+}
+
+interface ApiCourse extends ApiCourseSummary {
   tees?: {
     male?: ApiTee[];
     female?: ApiTee[];
@@ -34,7 +39,11 @@ interface ApiCourse {
 }
 
 interface ApiSearchResponse {
-  courses?: ApiCourse[];
+  courses?: ApiCourseSummary[];
+}
+
+interface ApiCourseResponse {
+  course?: ApiCourse;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -58,27 +67,31 @@ function firstTee(c: ApiCourse): ApiTee | undefined {
   return c.tees?.male?.[0] ?? c.tees?.female?.[0];
 }
 
-function parseCourse(c: ApiCourse): CourseSearchResult {
-  const tee = firstTee(c);
-  const holes = tee?.number_of_holes ?? DEFAULT_HOLES;
-  const par = tee?.holes?.map((h) => h.par) ?? Array(holes).fill(4);
+function courseLabel(c: ApiCourseSummary): string {
   // Use course_name when it adds info (e.g. "Oaks/Lakes"), otherwise club_name
-  const name = c.course_name && c.course_name !== c.club_name
+  return c.course_name && c.course_name !== c.club_name
     ? `${c.club_name} — ${c.course_name}`
     : c.club_name;
-  return { name, holes, par };
 }
 
-function locationLabel(c: ApiCourse): string {
+function parseCourse(c: ApiCourse): CourseSearchResult {
+  const tee = firstTee(c);
+  const par = tee?.holes?.length ? tee.holes.map((h) => h.par) : [...DEFAULT_PAR];
+  return { name: courseLabel(c), holes: par.length, par };
+}
+
+function locationLabel(c: ApiCourseSummary): string {
   const parts = [c.location?.city, c.location?.state ?? c.location?.country].filter(Boolean);
   return parts.join(', ');
 }
 
 export function CourseSearchStep({ value, onChange }: Props) {
   const [query, setQuery] = useState(value.name);
-  const [results, setResults] = useState<ApiCourse[]>([]);
+  const [results, setResults] = useState<ApiCourseSummary[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [loadingCourse, setLoadingCourse] = useState(false);
+  const selectSeq = useRef(0);
   const [showDropdown, setShowDropdown] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -144,12 +157,32 @@ export function CourseSearchStep({ value, onChange }: Props) {
     }, 350);
   }
 
-  function handleSelect(course: ApiCourse) {
-    const parsed = parseCourse(course);
-    onChange(parsed);
+  async function handleSelect(course: ApiCourseSummary) {
+    const seq = ++selectSeq.current;
     setQuery(course.club_name);
     setShowDropdown(false);
     setResults([]);
+    setSearchError('');
+    // Name now; holes and pars once the course details arrive
+    onChange({ name: courseLabel(course), holes: DEFAULT_HOLES, par: [...DEFAULT_PAR] });
+    setLoadingCourse(true);
+    try {
+      const res = await fetch(`/proxy/golfcourse/v1/courses/${encodeURIComponent(String(course.id))}`);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const data: ApiCourseResponse = await res.json();
+      if (seq !== selectSeq.current) return;
+      if (!data.course || !firstTee(data.course)?.holes?.length) {
+        setSearchError('No hole data for this course — check the pars below.');
+        return;
+      }
+      onChange(parseCourse(data.course));
+    } catch (err) {
+      if (seq !== selectSeq.current) return;
+      setSearchError('Could not load the course details — check the pars below.');
+      console.error(err);
+    } finally {
+      if (seq === selectSeq.current) setLoadingCourse(false);
+    }
   }
 
   function handleParInput(raw: string) {
@@ -173,8 +206,8 @@ export function CourseSearchStep({ value, onChange }: Props) {
             placeholder="Search for your course…"
             className="w-full bg-gray-800 text-white placeholder-gray-600 rounded-xl px-4 py-3 text-base outline-none focus:ring-2 focus:ring-green-500"
           />
-          {searching && (
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Searching…</span>
+          {(searching || loadingCourse) && (
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-xs">{loadingCourse ? 'Loading course…' : 'Searching…'}</span>
           )}
 
           {/* Dropdown */}
@@ -191,12 +224,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
                     {c.course_name && c.course_name !== c.club_name && (
                       <p className="text-green-400 text-xs">{c.course_name}</p>
                     )}
-                    {(() => {
-                      const tee = firstTee(c);
-                      const loc = locationLabel(c);
-                      const detail = [loc, tee ? `${tee.number_of_holes} holes · par ${tee.par_total}` : null].filter(Boolean).join(' · ');
-                      return detail ? <p className="text-gray-500 text-xs">{detail}</p> : null;
-                    })()}
+                    {locationLabel(c) && <p className="text-gray-500 text-xs">{locationLabel(c)}</p>}
                   </button>
                 </li>
               ))}
@@ -244,6 +272,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
               <label className="text-gray-400 text-sm font-medium">Par per hole (comma-separated)</label>
               <input
                 type="text"
+                key={value.par.join(',')}
                 defaultValue={value.par.join(', ')}
                 onBlur={(e) => handleParInput(e.target.value)}
                 placeholder="4, 3, 5, 4, 4, 3, 4, 5, 4…"
