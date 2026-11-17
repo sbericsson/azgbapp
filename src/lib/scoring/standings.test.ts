@@ -149,7 +149,7 @@ describe('stroke-format totals use each hole’s own par (B4)', () => {
 });
 
 describe('computeStandings', () => {
-  const group = (id: string, name: string): Group => ({ id, name, pin: '0000', players: players.slice(0, 2), roundId: 'r' });
+  const group = (id: string, name: string): Group => ({ id, name, players: players.slice(0, 2), roundId: 'r' });
   const doc = (groupId: string, scores: (number | null)[]): GroupScoreDoc => ({
     groupId,
     updatedAt: 0,

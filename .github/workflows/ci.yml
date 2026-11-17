@@ -18,14 +18,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
-      - name: Build
+      - name: Build app
         run: npm run build
-        env:
-          # Placeholder config: the build only needs the variables to exist
-          VITE_TOURNAMENT_ID: ci
-          VITE_FIREBASE_API_KEY: ci
-          VITE_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
-          VITE_FIREBASE_PROJECT_ID: ci
-          VITE_FIREBASE_STORAGE_BUCKET: ci.appspot.com
-          VITE_FIREBASE_MESSAGING_SENDER_ID: '0'
-          VITE_FIREBASE_APP_ID: ci
+      - name: Build API server
+        run: npm run build:server

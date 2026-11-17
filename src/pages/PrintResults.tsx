@@ -5,7 +5,7 @@ import {
   listCourses,
   listGroupsByRound,
   listAllScores,
-} from '../lib/firestore';
+} from '../lib/data';
 import type { Round, RoundFormat } from '../types/tournament';
 import { computeStandings, formatRank, formatScore, type StandingEntry } from '../lib/scoring/standings';
 

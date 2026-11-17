@@ -40,3 +40,8 @@ dist.next
 .agents/
 .playwright-cli/
 AGENTS.md
+
+# API server
+server/dist/
+server/.env
+data/

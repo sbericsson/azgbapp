@@ -11,9 +11,10 @@ export interface Golfer {
 export interface Group {
   id: string;
   name: string;
-  pin: string;
   players: Player[];
   roundId: string;
+  /** Who keeps score for this group. Only organisers can see it. */
+  scorerEmail?: string;
 }
 
 export type RoundFormat = 'wolf' | 'bestBall' | 'scramble' | 'gauntlet';
@@ -40,13 +41,11 @@ export interface Course {
 export interface Tournament {
   id: string;
   name: string;
-  adminPin: string;
   createdAt: number;
+  /** Organiser emails. Only organisers can see them. */
+  admins?: string[];
   logoUrl?: string;
   selfService?: boolean; // true when created via /create; triggers onboarding wizard
   archivedAt?: number; // set when archived: hidden from the list, code login blocked
 }
 
-export interface AppConfig {
-  appAdminPin: string;
-}

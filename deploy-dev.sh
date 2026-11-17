@@ -4,7 +4,7 @@
 # Run this on the SERVER (not locally):
 #   bash /var/www/azgb/deploy-dev.sh
 #
-# Builds a chosen branch with dev Firebase credentials.
+# Builds a chosen branch against the dev API server (azgb-api-dev).
 # Works entirely in /var/www/azgb-dev — never touches the
 # production repo or dist at /var/www/azgb.
 # Served at https://dev.golfbender.app
@@ -86,7 +86,7 @@ echo ""
 echo "==> Installing dependencies…"
 npm ci --include=dev
 
-echo "==> Building for dev (azgb-dev Firebase project)…"
+echo "==> Building for dev…"
 # Clear any stale VITE_* vars from the shell environment before sourcing the dev env
 while IFS='=' read -r key _; do unset "$key"; done < <(printenv | grep '^VITE_')
 set -a
@@ -95,6 +95,9 @@ source "$DEV_ENV"
 set +a
 # Builds into releases/ and swaps the dist/ symlink only on success
 bash scripts/build-release.sh
+
+echo "==> Dev API server…"
+bash scripts/restart-api.sh azgb-api-dev
 
 echo ""
 echo "✓ Dev deploy complete — https://dev.golfbender.app"

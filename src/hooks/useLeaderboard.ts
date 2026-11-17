@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { subscribeAllScores } from '../lib/firestore';
+import { subscribeAllScores } from '../lib/data';
 import type { GroupScoreDoc } from '../types/scoring';
 import type { Group, Round } from '../types/tournament';
 import { computeStandings } from '../lib/scoring/standings';

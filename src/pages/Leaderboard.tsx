@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../hooks/useAuth';
-import { listRounds, subscribeGroupsByRound, getCourse } from '../lib/firestore';
+import { listRounds, subscribeGroupsByRound, getCourse } from '../lib/data';
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import type { Round, Group } from '../types/tournament';
 import { WolfLeaderboard } from '../components/leaderboard/WolfLeaderboard';
@@ -10,7 +10,7 @@ import { TeamLeaderboard } from '../components/leaderboard/TeamLeaderboard';
 export function Leaderboard() {
   const { roundId } = useParams<{ roundId: string }>();
   const navigate = useNavigate();
-  const { group, tournamentId } = useContext(AuthContext);
+  const { groupForRound, tournamentId } = useContext(AuthContext);
 
   const [round, setRound] = useState<Round | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -122,7 +122,7 @@ export function Leaderboard() {
 
       {/* Bottom nav */}
       <div className="bg-gray-900 border-t border-gray-700 p-4 pb-safe">
-        {roundId && group && group.roundId === roundId && round?.status !== 'complete' && (
+        {roundId && groupForRound(roundId) && round?.status !== 'complete' && (
           <button
             onClick={() => navigate(`/scorecard/${roundId}`)}
             className="w-full h-14 rounded-xl bg-green-700 text-white font-bold"

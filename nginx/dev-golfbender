@@ -11,6 +11,7 @@ server {
     root /var/www/azgb-dev/dist;
     index index.html;
 
+
     location = /index.html {
         add_header Cache-Control "no-cache, no-store, must-revalidate";
         add_header Pragma "no-cache";
@@ -27,6 +28,9 @@ server {
         add_header X-Content-Type-Options "nosniff" always;
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     }
+
+    # API, live updates and key proxies (R13, R15): nginx/snippets/azgb-api-dev.conf
+    include /etc/nginx/snippets/azgb-api-dev.conf;
 
     location / {
         try_files $uri $uri/ /index.html;
