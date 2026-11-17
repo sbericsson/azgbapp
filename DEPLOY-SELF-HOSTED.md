@@ -149,7 +149,7 @@ The database is one file. Take a consistent copy every hour and keep 30
 (`crontab -e` as `sbericsson`):
 
 ```
-15 * * * * cd /var/www/azgb && npx tsx server/scripts/backup-db.ts /home/sbericsson/azgb-data/azgb.db /home/sbericsson/azgb-data/backups
+15 * * * * cd /var/www/azgb && npx tsx server/scripts/backup-db.ts /home/sbericsson/azgb-data/azgb.db /home/sbericsson/azgb-data/backups >> /home/sbericsson/azgb-data/backups/backup.log 2>&1
 ```
 
 Copy `~/azgb-data/backups` off the server now and then. Organisers can still
