@@ -1,4 +1,5 @@
-const OPENROUTER_MODEL = (import.meta.env.VITE_OPENROUTER_MODEL as string | undefined) ?? 'deepseek/deepseek-v4-flash';
+// Must be a model the OpenRouter workspace's guardrails allow, by its exact (dated) id.
+const OPENROUTER_MODEL = (import.meta.env.VITE_OPENROUTER_MODEL as string | undefined) ?? 'deepseek/deepseek-v4.1-flash-20261017';
 // Same-origin proxy: nginx adds the key server-side and rate-limits (R15)
 const OPENROUTER_API_URL = '/proxy/openrouter/chat/completions';
 
@@ -218,6 +219,8 @@ function sanitizePolish(text: string, ctx: AIFeedbackContext): string | null {
 
   const firstSentence = splitSentences(cleaned)[0] ?? '';
   if (!firstSentence) return null;
+  // A reply cut off by max_tokens has no closing punctuation: never show half a joke
+  if (!/[.!?]["')\]]?$/.test(firstSentence)) return null;
   if (mentionsUnsupportedDetail(firstSentence, ctx)) return null;
   if (isTooSimilarToRecent(firstSentence, ctx.recentFeedback)) return null;
 
@@ -381,6 +384,8 @@ async function getOpenRouterFeedback(ctx: AIFeedbackContext): Promise<string> {
         ],
         max_tokens: 80,
         temperature: 0.45,
+        // Reasoning models otherwise spend the whole token budget thinking and return no text
+        reasoning: { enabled: false },
       }),
       signal: controller.signal,
     });
@@ -392,11 +397,13 @@ async function getOpenRouterFeedback(ctx: AIFeedbackContext): Promise<string> {
     }
 
     const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { finish_reason?: string; message?: { content?: string | null } }[];
     };
 
-    const text = data.choices?.[0]?.message?.content?.trim();
+    const choice = data.choices?.[0];
+    const text = choice?.message?.content?.trim();
     if (!text) throw new Error('Empty response from OpenRouter');
+    if (choice?.finish_reason === 'length') return buildFallbackFeedback(ctx);
     const polish = sanitizePolish(text, ctx);
     if (!polish) return buildFallbackFeedback(ctx);
     return `${buildFactSentence(ctx)} ${polish}`;
