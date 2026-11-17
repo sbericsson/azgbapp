@@ -21,7 +21,7 @@ interface ApiTee {
 }
 
 interface ApiCourseSummary {
-  id: number;
+  id: string; // e.g. "e9qqevf6"
   club_name: string;
   course_name: string;
   location?: {
@@ -167,7 +167,7 @@ export function CourseSearchStep({ value, onChange }: Props) {
     onChange({ name: courseLabel(course), holes: DEFAULT_HOLES, par: [...DEFAULT_PAR] });
     setLoadingCourse(true);
     try {
-      const res = await fetch(`/proxy/golfcourse/v1/courses/${encodeURIComponent(String(course.id))}`);
+      const res = await fetch(`/proxy/golfcourse/v1/courses/${encodeURIComponent(course.id)}`);
       if (!res.ok) throw new Error(`API ${res.status}`);
       const data: ApiCourseResponse = await res.json();
       if (seq !== selectSeq.current) return;
