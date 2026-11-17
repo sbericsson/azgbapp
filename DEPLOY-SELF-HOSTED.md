@@ -117,10 +117,13 @@ Pick a quiet time: scorers need a new sign-in link after this.
      --db ~/azgb-data/azgb.db --owner you@example.com
    ```
 
-3. `bash /var/www/azgb/deploy.sh`, then start the API once:
+3. `bash /var/www/azgb/deploy.sh`, then build and start the API once. The first
+   run executes the *old* deploy.sh (bash keeps reading the file it started
+   with), which has no API step, so run that step by hand:
 
    ```bash
    cd /var/www/azgb
+   bash scripts/restart-api.sh azgb-api    # bundles server/dist/index.mjs; notes no process yet
    pm2 start server/dist/index.mjs --name azgb-api \
      --node-args="--env-file=/home/sbericsson/azgb-data/api.env"
    pm2 save
@@ -135,6 +138,10 @@ Pick a quiet time: scorers need a new sign-in link after this.
    Before this step you can roll back by pointing `dist` at the previous
    release (`ln -sfn releases/<older> dist.next && mv -T dist.next dist`),
    though scores entered in the new app would not be in Firestore.
+7. Rotate the golfcourseapi.com key: the old app compiled it into its public
+   bundle. Put the new one in `/etc/nginx/azgb-keys.conf` (`$golfcourse_key`),
+   `sudo nginx -t && sudo systemctl reload nginx`, then remove the
+   `VITE_GOLF_COURSE_API_KEY` and `VITE_FIREBASE_*` lines from `/var/www/azgb/.env*`.
 
 ## 5. Backups
 
